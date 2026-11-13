@@ -2,3 +2,5 @@
 /.toolchain/
 /.swiftpm/
 /Karma Pro.app/
+/Web/node_modules/
+/Web/dist/
