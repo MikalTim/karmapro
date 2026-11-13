@@ -44,7 +44,7 @@ final class PromptStore {
     /// a small hardcoded set when the resource is missing (e.g. CLI builds).
     private static func loadBuiltinPrompts() -> [PromptTemplate] {
         var list: [PromptTemplate] = []
-        if let url = Bundle.main.url(forResource: "AIPrompts", withExtension: "json"),
+        if let url = KarmaResources.url(forResource: "AIPrompts", withExtension: "json"),
            let data = try? Data(contentsOf: url),
            let decoded = try? JSONDecoder().decode([PromptTemplate].self, from: data) {
             list = decoded

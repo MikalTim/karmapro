@@ -96,7 +96,7 @@ enum SARIFExport {
     }
 
     private static var toolVersion: String {
-        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "unknown"
+        KarmaResources.shortVersion ?? "unknown"
     }
 
     // MARK: - Identifiers

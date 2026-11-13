@@ -49,7 +49,7 @@ enum UpdateChecker {
     /// The running version, read from the bundle so it can never disagree with
     /// what actually shipped. Same source as the splash label.
     static var currentVersion: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let version = KarmaResources.shortVersion
         return (version?.isEmpty == false) ? version! : "0"
     }
 

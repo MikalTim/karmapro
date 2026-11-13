@@ -61,7 +61,8 @@ final class ModelStore {
         let libraryHasModels = !listModels().isEmpty
         var changed = false
         for name in bundledNames {
-            guard let path = Bundle.main.path(forResource: name, ofType: "karmamodel", inDirectory: "Models") ?? Bundle.main.path(forResource: name, ofType: "karmamodel"),
+            guard let path = (KarmaResources.url(forResource: name, withExtension: "karmamodel", subdirectory: "Models")
+                                ?? KarmaResources.url(forResource: name, withExtension: "karmamodel"))?.path,
                   let sha = Self.sha256(of: URL(fileURLWithPath: path)) else { continue }
 
             if let idx = imports.firstIndex(where: { $0.resource == name }) {

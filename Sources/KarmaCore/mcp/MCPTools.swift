@@ -77,7 +77,7 @@ final class MCPTools {
     }
 
     private static var version: String {
-        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0"
+        KarmaResources.shortVersion ?? "0"
     }
 
     // MARK: - Tools

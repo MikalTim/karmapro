@@ -176,5 +176,5 @@ enum PRMarkdownReport {
 /// want the running version, and both should read it from one place rather than
 /// re-deriving it.
 enum KarmaVersion {
-    static let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+    static let current = KarmaResources.shortVersion ?? "1.0"
 }
