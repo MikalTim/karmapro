@@ -32,15 +32,6 @@ final class PackageScanWindowController: NSWindowController {
     var onOpenResult: ((URL, Int) -> Void)?
     var onAskAI: ((String) -> Void)?
 
-    private var ignoredLines: Set<String> {
-        get {
-            Set(UserDefaults.standard.stringArray(forKey: "PackageScanWindowController.ignoredLines") ?? [])
-        }
-        set {
-            UserDefaults.standard.set(Array(newValue), forKey: "PackageScanWindowController.ignoredLines")
-        }
-    }
-
     convenience init(projectRoot: URL) {
         let window = EscClosableWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1120, height: 660),
@@ -347,7 +338,7 @@ final class PackageScanWindowController: NSWindowController {
                             }
                         }
                     }
-                    result = .success((detection, self.makeFindings(
+                    result = .success((detection, PackageScanFindings.make(
                         dependencies: detection.dependencies,
                         vulnerabilities: vulnerabilities)))
                 } catch {
@@ -378,7 +369,7 @@ final class PackageScanWindowController: NSWindowController {
                 findings = []
                 return
             }
-            findings = applyIgnoredFilter(payload.findings)
+            findings = PackageScanFindings.applyIgnored(payload.findings)
             applySorting()
             tableView.reloadData()
             scanButton.isEnabled = true
@@ -397,97 +388,18 @@ final class PackageScanWindowController: NSWindowController {
         }
     }
 
-    private func makeFindings(dependencies: [PackageDependency],
-                              vulnerabilities: [String: [OSVVulnerability]]) -> [ScanFinding] {
-        var out: [ScanFinding] = []
-        for dependency in dependencies {
-            let key = OSVClient.queryKey(ecosystem: dependency.ecosystem,
-                                         name: dependency.name,
-                                         version: dependency.version)
-            guard let matches = vulnerabilities[key], !matches.isEmpty else { continue }
-            for vulnerability in matches {
-                let severity: ScanFinding.Severity
-                switch OSVClient.severity(of: vulnerability) {
-                case .critical: severity = .critical
-                case .high: severity = .high
-                case .medium: severity = .medium
-                case .low: severity = .low
-                }
-                let summary = vulnerability.summary.flatMap { $0.isEmpty ? nil : $0 }
-                    ?? vulnerability.details?.components(separatedBy: "\n").first
-                    ?? vulnerability.id
-                let displayID = vulnerability.aliases?.first(where: { $0.hasPrefix("CVE-") })
-                    ?? vulnerability.id
-                out.append(ScanFinding(fileURL: dependency.fileURL,
-                                       line: dependency.line,
-                                       function: dependency.ecosystem,
-                                       category: vulnerability.id,
-                                       message: "\(displayID): \(summary)",
-                                       taint: nil,
-                                       severity: severity,
-                                       exploitability: severity,
-                                       reachable: true,
-                                       taintPath: nil,
-                                       ignored: false,
-                                       scanningSource: "OSV",
-                                       crossFile: false,
-                                       packageName: "\(dependency.name)@\(dependency.version)"))
-            }
-        }
-        out.sort { a, b in
-            if a.severity != b.severity { return a.severity > b.severity }
-            let lhs = a.packageName ?? ""
-            let rhs = b.packageName ?? ""
-            if lhs != rhs { return lhs < rhs }
-            return a.category < b.category
-        }
-        return out
-    }
-
-    private func applyIgnoredFilter(_ input: [ScanFinding]) -> [ScanFinding] {
-        let ignored = ignoredLines
-        guard !ignored.isEmpty else { return input }
-        return input.filter { !ignored.contains(ignoredKey(for: $0)) }
-    }
-
-    private func ignoredKey(for finding: ScanFinding) -> String {
-        "\(finding.fileURL.path)#\(finding.line)#\(finding.packageName ?? "")"
-    }
-
     private func applySorting() {
         guard !sortDescriptors.isEmpty else { return }
         let current = sortDescriptors
         findings.sort { a, b in
             for descriptor in current {
-                let result = compareFinding(a, b, descriptor: descriptor)
+                let result = PackageScanFindings.compare(a, b, key: descriptor.key ?? "", ascending: descriptor.ascending)
                 if result != .orderedSame {
-                    return (result == .orderedAscending) == descriptor.ascending
+                    return result == .orderedAscending
                 }
             }
             return false
         }
-    }
-
-    private func compareFinding(_ a: ScanFinding, _ b: ScanFinding,
-                                descriptor: NSSortDescriptor) -> ComparisonResult {
-        switch descriptor.key ?? "" {
-        case "severity":
-            return compareValues(a.severity.rawValue, b.severity.rawValue)
-        case "package":
-            return compareValues(a.packageName ?? "", b.packageName ?? "")
-        case "fileURL":
-            return compareValues(a.fileURL.lastPathComponent, b.fileURL.lastPathComponent)
-        case "line":
-            return compareValues(a.line, b.line)
-        default:
-            return compareValues(a.message, b.message)
-        }
-    }
-
-    private func compareValues<T: Comparable>(_ a: T, _ b: T) -> ComparisonResult {
-        if a < b { return .orderedAscending }
-        if a > b { return .orderedDescending }
-        return .orderedSame
     }
 
     private func selectedFinding() -> ScanFinding? {
@@ -498,10 +410,10 @@ final class PackageScanWindowController: NSWindowController {
 
     @objc private func ignoreClicked(_ sender: Any?) {
         guard let finding = selectedFinding() else { return }
-        var set = ignoredLines
-        set.insert(ignoredKey(for: finding))
-        ignoredLines = set
-        findings = applyIgnoredFilter(findings)
+        var set = PackageScanFindings.ignoredLines()
+        set.insert(PackageScanFindings.ignoredKey(for: finding))
+        PackageScanFindings.setIgnoredLines(set)
+        findings = PackageScanFindings.applyIgnored(findings)
         tableView.reloadData()
         ignoreButton.isEnabled = selectedFinding() != nil
     }
