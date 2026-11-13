@@ -1629,8 +1629,7 @@ extension MainWindowController: NSToolbarDelegate {
 
     @objc private func updateBugBadge() {
         BugStore.shared.reload()
-        let openStatuses: Set<String> = ["Open", "In Progress"]
-        let count = BugStore.shared.allBugs().filter { openStatuses.contains($0.status) }.count
+        let count = BugStore.shared.openBugCount
         bugBadgeView?.update(count: count)
     }
 

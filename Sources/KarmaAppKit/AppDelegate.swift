@@ -78,8 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func updateDockBadge() {
         BugStore.shared.reload()
-        let openStatuses: Set<String> = ["Open", "In Progress"]
-        let openBugs = BugStore.shared.allBugs().filter { openStatuses.contains($0.status) }.count
+        let openBugs = BugStore.shared.openBugCount
         NSApp.dockTile.badgeLabel = openBugs > 0 ? "\(openBugs)" : ""
     }
 

@@ -85,6 +85,15 @@ final class BugStore {
         bugs.first { $0.id == id }
     }
 
+    /// Number of reports that still need attention (status "Open" or
+    /// "In Progress"). This is the number shown on the Dock badge and the
+    /// toolbar Bugs button. It counts the reports currently in memory, so call
+    /// `reload()` first when the file may have changed.
+    var openBugCount: Int {
+        let openStatuses: Set<String> = ["Open", "In Progress"]
+        return bugs.filter { openStatuses.contains($0.status) }.count
+    }
+
     /// Returns bugs whose title, package name, detail, or ID matches the query
     /// (case-insensitive).
     func search(_ query: String) -> [Bug] {
