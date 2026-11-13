@@ -1,5 +1,8 @@
 // by cipher.org.uk
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// A model entry returned by the OpenRouter `/models` endpoint.
 struct OpenRouterModel: Codable {

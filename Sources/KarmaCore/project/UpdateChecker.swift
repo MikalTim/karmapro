@@ -1,5 +1,8 @@
 // by cipher.org.uk
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Asks GitHub for the newest production release of Karma Pro.
 ///

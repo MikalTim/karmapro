@@ -240,7 +240,7 @@ final class PackageLineLocator {
         let length = text.length
         var offsets = [0]
         if length > 0 {
-            var buffer = [UniChar](repeating: 0, count: length)
+            var buffer = [unichar](repeating: 0, count: length)
             text.getCharacters(&buffer, range: NSRange(location: 0, length: length))
             for index in 0..<length where buffer[index] == 10 {
                 offsets.append(index + 1)

@@ -1,6 +1,10 @@
 // by cipher.org.uk
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
 
 /// AI-powered vulnerability discovery scanner.
 ///

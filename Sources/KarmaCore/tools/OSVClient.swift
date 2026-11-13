@@ -1,5 +1,8 @@
 // by cipher.org.uk
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 struct OSVVulnerability: Decodable {
     let id: String

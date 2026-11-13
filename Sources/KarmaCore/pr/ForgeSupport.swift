@@ -9,6 +9,9 @@
 // ForgeAdapters.swift. This file holds what they share; that one holds what
 // makes them different.
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Wraps a user-readable message as an `Error` so failures can travel through
 /// `Result` without inventing a case for every reason a token might fail.

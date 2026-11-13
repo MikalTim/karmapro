@@ -1,5 +1,9 @@
 // by cipher.org.uk
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
 import Foundation
 
 /// Manages persisted, user-named Bayesian classifier models in
