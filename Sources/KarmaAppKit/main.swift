@@ -2,6 +2,10 @@
 import AppKit
 import UserNotifications
 
+// The PR layer is platform-neutral; on macOS its tokens live in the Keychain.
+// Installed before anything can touch PRStore.
+PRStore.shared.tokenStorage = KeychainPRTokenStorage()
+
 let app = NSApplication.shared
 if let darkAppearance = NSAppearance(named: .darkAqua) {
     app.appearance = darkAppearance

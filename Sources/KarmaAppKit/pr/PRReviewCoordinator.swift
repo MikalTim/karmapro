@@ -31,7 +31,9 @@ final class PRReviewCoordinator {
     /// True once the menu-bar item is installed.
     private(set) var isInstalled = false
 
-    private init() {}
+    private init() {
+        monitor.presenter = self
+    }
 
     /// Installs the menu-bar item and starts polling if the user had already
     /// enabled monitoring in a previous launch.
@@ -226,4 +228,18 @@ final class PRReviewCoordinator {
         _ = alert.runModal()
     }
 
+}
+
+extension PRReviewCoordinator: PRMonitorPresenter {
+    func requestNotificationAuthorization() {
+        PRNotifier.shared.requestAuthorization()
+    }
+
+    func deliver(_ fresh: [PRActionItem], allowSound: Bool) {
+        PRNotifier.shared.deliver(fresh, allowSound: allowSound)
+    }
+
+    func consumePendingReview(among items: [PRActionItem]) -> PRActionItem? {
+        PRNotifier.consumePendingReview(among: items)
+    }
 }

@@ -1,6 +1,16 @@
 // by cipher.org.uk
 import Foundation
-import UserNotifications
+
+/// Front-end hooks for `PRMonitor`: how freshly seen pull requests are
+/// announced and how a review parked by a notification is resumed. The AppKit
+/// app installs its notifier/coordinator here; headless front ends leave it
+/// unset and polling simply updates `items`.
+protocol PRMonitorPresenter: AnyObject {
+    func requestNotificationAuthorization()
+    func deliver(_ fresh: [PRActionItem], allowSound: Bool)
+    func consumePendingReview(among items: [PRActionItem]) -> PRActionItem?
+    func startReview(_ item: PRActionItem)
+}
 
 /// One pull request the user can act on from the menu.
 struct PRActionItem {
@@ -20,8 +30,8 @@ struct PRActionItem {
 final class PRMonitor {
     /// Called on the main queue whenever the menu's contents should change.
     var onChange: (() -> Void)?
-    /// Called on the main queue for a newly-seen PR.
-
+    /// Front-end notification/review hooks; see `PRMonitorPresenter`.
+    weak var presenter: PRMonitorPresenter?
     private(set) var items: [PRActionItem] = []
     private var timer: Timer?
     private var isPolling = false
@@ -285,13 +295,13 @@ final class PRMonitor {
         // "Off" has to stop the alert, not just the sound: a user who turned
         // notifications off and still gets banners has been ignored.
         if store.notifyStyle != .off {
-            PRNotifier.shared.deliver(freshItems, allowSound: store.notifyStyle == .bannerAndSound)
+            presenter?.deliver(freshItems, allowSound: store.notifyStyle == .bannerAndSound)
         }
 
         // A review requested from a notification while the app was closed can
         // only be started once there is something to open.
-        if let parked = PRNotifier.consumePendingReview(among: items) {
-            PRReviewCoordinator.shared.startReview(parked)
+        if let presenter, let parked = presenter.consumePendingReview(among: items) {
+            presenter.startReview(parked)
         }
         onChange?()
     }
@@ -332,7 +342,7 @@ final class PRMonitor {
         // Only asked once the user has actually chosen a notifying style, so a
         // fresh install that has not enabled monitoring is never prompted.
         guard store.notifyStyle != .off else { return }
-        PRNotifier.shared.requestAuthorization()
+        presenter?.requestNotificationAuthorization()
     }
 
     /// Path-safe name for a filesystem component.
