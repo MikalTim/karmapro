@@ -1,2 +1,188 @@
-:root { color-scheme: dark; }
-body { margin: 0; background: #2b2b2b; color: rgba(255, 255, 255, 0.85); font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+/* Karma Pro always runs in the dark appearance (main.swift forces Dark Aqua),
+   so only dark values exist. AppKit point sizes are the same number of px. */
+:root {
+  color-scheme: dark;
+
+  --window-bg: #2b2b2b;
+  --control-bg: #1e1e1e;
+  --text-bg: #1e1e1e;
+  --label: rgba(255, 255, 255, 0.85);
+  --secondary-label: rgba(255, 255, 255, 0.55);
+  --tertiary-label: rgba(255, 255, 255, 0.25);
+  --separator: rgba(255, 255, 255, 0.1);
+
+  --system-red: #ff453a;
+  --system-orange: #ff9f0a;
+  --system-yellow: #ffd60a;
+  --system-green: #32d74b;
+  --system-blue: #0a84ff;
+  --link: #0a84ff;
+  --accent: #0a84ff;
+  --system-gray: #98989d;
+  --system-purple: #bf5af2;
+  --system-teal: #64d2ff;
+  --system-pink: #ff375f;
+  --system-indigo: #5e5ce6;
+  --selection: rgba(10, 132, 255, 0.35);
+
+  --tok-keyword: #c794ff;
+  --tok-string: #9edb73;
+  --tok-comment: #808a99;
+  --tok-number: #f0ad5c;
+  --tok-type: #7dccff;
+  --tok-plain: #e0e0e0;
+
+  /* Derived surfaces the AppKit controls draw themselves. */
+  --bezel: #4b4b4d;
+  --bezel-hover: #58585a;
+  --bezel-border: rgba(0, 0, 0, 0.45);
+  --title-bar: #3a3a3c;
+  --row-alt: rgba(255, 255, 255, 0.04);
+  --row-hover: rgba(255, 255, 255, 0.06);
+  --shadow: 0 14px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.5);
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, "DejaVu Sans Mono", monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--window-bg);
+  color: var(--label);
+  font: 13px/1.3 var(--font-ui);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: var(--selection);
+}
+
+/* Text that can be selected and copied (AppKit text views). */
+.selectable,
+.selectable * {
+  user-select: text;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* NSButton, rounded bezel */
+.btn {
+  appearance: none;
+  background: var(--bezel);
+  border: 1px solid var(--bezel-border);
+  border-radius: 5px;
+  padding: 2px 12px;
+  min-height: 22px;
+  color: var(--label);
+  cursor: default;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.btn:hover:not(:disabled) {
+  background: var(--bezel-hover);
+}
+.btn:active:not(:disabled) {
+  background: #3d3d3f;
+}
+.btn:disabled {
+  color: var(--tertiary-label);
+}
+.btn.default {
+  background: var(--accent);
+  border-color: rgba(0, 0, 0, 0.35);
+  color: #fff;
+}
+.btn.default:hover:not(:disabled) {
+  background: #2f92ff;
+}
+.btn.small {
+  min-height: 19px;
+  padding: 1px 8px;
+  font-size: 11px;
+}
+.btn.focus-ring:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid rgba(10, 132, 255, 0.6);
+  outline-offset: 1px;
+}
+
+/* NSTextField (bezeled) */
+.field {
+  appearance: none;
+  background: var(--text-bg);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  padding: 2px 6px;
+  min-height: 22px;
+  color: var(--label);
+  user-select: text;
+}
+.field:focus {
+  outline: 2px solid rgba(10, 132, 255, 0.6);
+  outline-offset: -1px;
+}
+.field::placeholder {
+  color: var(--tertiary-label);
+}
+
+.label {
+  color: var(--label);
+}
+.secondary {
+  color: var(--secondary-label);
+}
+
+hr.separator {
+  border: 0;
+  border-top: 1px solid var(--separator);
+  margin: 4px 0;
+}
+
+/* Scrollbars in the style of the dark overlay scrollers. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+}
+
+/* Syntax colours, shared by the source viewer and the definition popup. */
+.tok-keyword {
+  color: var(--tok-keyword);
+}
+.tok-string {
+  color: var(--tok-string);
+}
+.tok-comment {
+  color: var(--tok-comment);
+}
+.tok-number {
+  color: var(--tok-number);
+}
+.tok-type {
+  color: var(--tok-type);
+}
+.tok-plain {
+  color: var(--tok-plain);
+}
