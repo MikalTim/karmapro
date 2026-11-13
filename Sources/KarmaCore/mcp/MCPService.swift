@@ -11,13 +11,19 @@ final class MCPService {
     private static let lastPort: UInt16 = 8775
 
     private let defaults = UserDefaults.standard
-    private let server = MCPHTTPServer()
+    /// Creates the HTTP listener. A front end installs this before the service
+    /// starts (AppKit: Network.framework; web server: Vapor).
+    static var makeTransport: (() -> MCPTransport)?
+    /// The queue `onChange` is called on. The main queue, unless a front end
+    /// has no main run loop (the web server) and says otherwise.
+    static var changeQueue: DispatchQueue = .main
+    private lazy var server: MCPTransport? = MCPService.makeTransport?()
     private let tools = MCPTools()
     private let workQueue = DispatchQueue(label: "app.karmapro.mcp.work", attributes: .concurrent)
     private let lock = NSLock()
 
     private var sessions: [String: MCPSession] = [:]
-    private var streams: [(session: String, stream: MCPHTTPStream)] = []
+    private var streams: [(session: String, stream: MCPEventStream)] = []
     private var progressTokens: [String: [(session: String, token: Any)]] = [:]
     private var scans = 0
     private var configured = false
@@ -107,7 +113,11 @@ final class MCPService {
         }
         lock.unlock()
 
-        configureIfNeeded()
+        guard let server = self.server else {
+            throw NSError(domain: "MCP", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "No MCP transport is available in this build."])
+        }
+        configureIfNeeded(server: server)
         var failure: Error?
         for candidate in Self.firstPort...Self.lastPort {
             do {
@@ -133,7 +143,7 @@ final class MCPService {
     }
 
     func stop() {
-        var open: [MCPHTTPStream] = []
+        var open: [MCPEventStream] = []
         lock.lock()
         open = streams.map { $0.stream }
         streams = []
@@ -144,7 +154,7 @@ final class MCPService {
         startedAt = nil
         lock.unlock()
         open.forEach { $0.close() }
-        server.stop()
+        server?.stop()
         notifyChange()
     }
 
@@ -158,7 +168,7 @@ final class MCPService {
 
     // MARK: - Wiring
 
-    private func configureIfNeeded() {
+    private func configureIfNeeded(server: MCPTransport) {
         lock.lock()
         let done = configured
         configured = true
@@ -198,7 +208,7 @@ final class MCPService {
 
     // MARK: - HTTP
 
-    private func handle(_ request: MCPHTTPServer.Request) -> MCPHTTPServer.Response {
+    private func handle(_ request: MCPHTTPRequest) -> MCPHTTPResponse {
         guard let route = Self.route(request.path) else {
             return .text(404, "Not found. The MCP endpoint is /mcp/<token>.")
         }
@@ -224,7 +234,7 @@ final class MCPService {
         }
     }
 
-    private func handlePost(_ request: MCPHTTPServer.Request) -> MCPHTTPServer.Response {
+    private func handlePost(_ request: MCPHTTPRequest) -> MCPHTTPResponse {
         guard let parsed = MCPParser.parse(request.body) else {
             return .json(MCPCode.error(nil, MCPCode.parse, "Body is not valid JSON-RPC 2.0."))
         }
@@ -239,13 +249,13 @@ final class MCPService {
         }
         guard !responses.isEmpty else { return .init(status: 202) }
 
-        var response = MCPHTTPServer.Response.json(parsed.batch ? responses : responses[0])
+        var response = MCPHTTPResponse.json(parsed.batch ? responses : responses[0])
         response.headers["Mcp-Session-Id"] = session.id
         response.headers["MCP-Protocol-Version"] = session.protocolVersion
         return response
     }
 
-    private func acceptStream(_ request: MCPHTTPServer.Request, _ stream: MCPHTTPStream) -> Bool {
+    private func acceptStream(_ request: MCPHTTPRequest, _ stream: MCPEventStream) -> Bool {
         guard let route = Self.route(request.path),
               isAuthorized(request, pathToken: route.token) else {
             note("refused an event stream with a bad or missing token")
@@ -271,7 +281,7 @@ final class MCPService {
         return Route(token: String(path.dropFirst("/mcp/".count)))
     }
 
-    private func isAuthorized(_ request: MCPHTTPServer.Request, pathToken: String?) -> Bool {
+    private func isAuthorized(_ request: MCPHTTPRequest, pathToken: String?) -> Bool {
         let expected = token
         if let pathToken, pathToken == expected { return true }
         if let header = request.header("authorization"), header.lowercased().hasPrefix("bearer ") {
@@ -281,7 +291,7 @@ final class MCPService {
         return false
     }
 
-    private func session(for request: MCPHTTPServer.Request, isInitialize: Bool) -> MCPSession {
+    private func session(for request: MCPHTTPRequest, isInitialize: Bool) -> MCPSession {
         lock.lock()
         defer { lock.unlock() }
         if let id = request.header("mcp-session-id"), let existing = sessions[id] {
@@ -364,7 +374,7 @@ final class MCPService {
     }
 
     private func notifyChange() {
-        DispatchQueue.main.async { [weak self] in
+        MCPService.changeQueue.async { [weak self] in
             self?.onChange?()
         }
     }

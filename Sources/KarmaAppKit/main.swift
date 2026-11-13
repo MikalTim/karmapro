@@ -6,6 +6,12 @@ import UserNotifications
 // Installed before anything can touch PRStore.
 PRStore.shared.tokenStorage = KeychainPRTokenStorage()
 
+// The MCP service is transport-neutral; the app listens with Network.framework.
+MCPService.makeTransport = { MCPHTTPServer() }
+
+// Wiki search reads page text through Cocoa's RTF parser, as it always has.
+WikiStore.plainTextExtractor = { NSAttributedString(rtf: $0, documentAttributes: nil)?.string ?? "" }
+
 let app = NSApplication.shared
 if let darkAppearance = NSAppearance(named: .darkAqua) {
     app.appearance = darkAppearance

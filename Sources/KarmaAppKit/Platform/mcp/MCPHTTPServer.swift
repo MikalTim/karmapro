@@ -4,40 +4,16 @@ import Network
 
 /// Minimal HTTP/1.1 server for the MCP endpoint: one request per connection,
 /// loopback peers only, with an optional server-sent-events stream.
-final class MCPHTTPServer {
-    struct Request {
-        let method: String
-        let path: String
-        let headers: [String: String]
-        let body: Data
-
-        func header(_ name: String) -> String? { headers[name.lowercased()] }
-    }
-
-    struct Response {
-        var status: Int = 200
-        var headers: [String: String] = [:]
-        var body: Data = Data()
-
-        static func json(_ object: Any) -> Response {
-            Response(status: 200,
-                     headers: ["Content-Type": "application/json"],
-                     body: MCPCode.json(object))
-        }
-
-        static func text(_ status: Int, _ message: String) -> Response {
-            Response(status: status,
-                     headers: ["Content-Type": "text/plain; charset=utf-8"],
-                     body: Data(message.utf8))
-        }
-    }
+final class MCPHTTPServer: MCPTransport {
+    // The request and response types are shared with the other MCP transport,
+    // so they live in KarmaCore (MCPTransport.swift).
 
     /// Handlers may block (a scan_directory call waits briefly), so they run off
     /// the listener's queue and answer through the callback.
-    var handler: ((Request, @escaping (Response) -> Void) -> Void)?
+    var handler: ((MCPHTTPRequest, @escaping (MCPHTTPResponse) -> Void) -> Void)?
     /// Called for a GET that asks for `text/event-stream`. Return false to
     /// refuse the stream; the peer then gets a plain 401.
-    var onStream: ((Request, MCPHTTPStream) -> Bool)?
+    var onStream: ((MCPHTTPRequest, MCPEventStream) -> Bool)?
     var log: ((String) -> Void)?
 
     private var listener: NWListener?
@@ -156,7 +132,7 @@ final class MCPHTTPServer {
         }
     }
 
-    private static func parse(_ buffer: Data) -> Request? {
+    private static func parse(_ buffer: Data) -> MCPHTTPRequest? {
         guard let headerEnd = buffer.range(of: Data("\r\n\r\n".utf8)) else { return nil }
         let headerData = buffer[..<headerEnd.lowerBound]
         guard let headerText = String(data: headerData, encoding: .utf8) else { return nil }
@@ -179,10 +155,10 @@ final class MCPHTTPServer {
         let length = Int(headers["content-length"] ?? "0") ?? 0
         let body = buffer[buffer.index(headerEnd.upperBound, offsetBy: 0)...]
         guard body.count >= length else { return nil }
-        return Request(method: method, path: path, headers: headers, body: Data(body.prefix(length)))
+        return MCPHTTPRequest(method: method, path: path, headers: headers, body: Data(body.prefix(length)))
     }
 
-    private func route(_ request: Request, on connection: NWConnection) {
+    private func route(_ request: MCPHTTPRequest, on connection: NWConnection) {
         if request.method == "GET",
            (request.header("accept") ?? "").contains("text/event-stream") {
             let stream = MCPHTTPStream(connection: connection, queue: queue)
@@ -212,7 +188,7 @@ final class MCPHTTPServer {
         }
     }
 
-    private func respond(_ response: Response, on connection: NWConnection) {
+    private func respond(_ response: MCPHTTPResponse, on connection: NWConnection) {
         var headers = response.headers
         headers["Content-Length"] = String(response.body.count)
         headers["Connection"] = "close"
@@ -245,7 +221,7 @@ final class MCPHTTPServer {
 }
 
 /// A server-sent-events channel for one client session.
-final class MCPHTTPStream {
+final class MCPHTTPStream: MCPEventStream {
     fileprivate let connection: NWConnection
     fileprivate let queue: DispatchQueue
     private let lock = NSLock()
