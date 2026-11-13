@@ -2,15 +2,22 @@
 # Builds Karma Pro from source.
 #
 #   ./build.sh                 macOS: the AppKit app bundle ("Karma Pro.app").
+#                              Linux: same as --no-appkit.
 #   ./build.sh --intel-only    macOS: same, x86_64 slice only.
-#   ./build.sh --no-appkit     Any OS: only the headless `karma` CLI, via SwiftPM
-#                              (.build/release/karma). This is the default, and
-#                              the only option, on Linux.
+#   ./build.sh --no-appkit     Any OS: the `karma` CLI with the web front end
+#                              (`karma --serve`). Builds with SwiftPM, builds the
+#                              Svelte app in Web/ (needs Node and npm), and puts
+#                              karma-web/ and karma-resources/ next to the binary
+#                              (.build/release/).
+#   ./build.sh --headless      Any OS: the `karma` CLI without the web server
+#                              (no Vapor, no Node needed). Puts karma-resources/
+#                              next to the binary.
 set -e
 cd "$(dirname "$0")"
 
 APPKIT=1
 [ "$(uname -s)" = "Darwin" ] || APPKIT=0
+WEB=1
 
 # Architectures to build. Both slices are compiled and then combined into one
 # universal binary, so the app runs natively on Intel Macs and on Apple Silicon
@@ -19,10 +26,11 @@ APPKIT=1
 ARCHS=("x86_64" "arm64")
 case "${1:-}" in
   --intel-only) ARCHS=("x86_64") ;;
-  --no-appkit|--headless) APPKIT=0 ;;
+  --no-appkit) APPKIT=0 ;;
+  --headless) APPKIT=0; WEB=0 ;;
   "") ;;
   *)
-    echo "Unknown option: $1 (expected no arguments, --intel-only or --no-appkit)" >&2
+    echo "Unknown option: $1 (expected no arguments, --intel-only, --no-appkit or --headless)" >&2
     exit 2
     ;;
 esac
@@ -32,9 +40,22 @@ if [ "$APPKIT" = 0 ]; then
     echo "--intel-only builds the AppKit app, which needs macOS." >&2
     exit 2
   fi
-  echo "Building the headless karma CLI (AppKit UI disabled)…"
-  swift build -c release --product karma
-  echo "Built $(swift build -c release --show-bin-path)/karma"
+  if [ "$WEB" = 1 ]; then
+    echo "Building the karma CLI with the web front end (AppKit UI disabled)…"
+    swift build -c release --product karma
+  else
+    echo "Building the headless karma CLI (no web server, AppKit UI disabled)…"
+    swift build -c release --product karma --disable-default-traits
+  fi
+  BIN_DIR="$(swift build -c release --show-bin-path)"
+  rm -rf "$BIN_DIR/karma-resources" "$BIN_DIR/karma-web"
+  cp -R Resources_src "$BIN_DIR/karma-resources"
+  if [ "$WEB" = 1 ]; then
+    echo "Building the web front end…"
+    (cd Web && npm ci && npm run build)
+    cp -R Web/dist "$BIN_DIR/karma-web"
+  fi
+  echo "Built $BIN_DIR/karma"
   exit 0
 fi
 

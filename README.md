@@ -14,21 +14,24 @@ To build Karma Pro download the repo and build it with `./build.sh` (at least Xc
 #### Source layout and front ends
 | Path | What | Platforms |
 |---|---|---|
-| `Sources/KarmaCore` | Scanning engine (parsers, analyzers, detectors, indexes, stores). Foundation only; the public entry point is `KarmaScanner.scan(root:)` → Codable `ScanReport`. | macOS, Linux |
-| `Sources/karma` | Headless CLI: scans a directory and prints a JSON report. | macOS, Linux |
+| `Sources/KarmaCore` | Scanning engine (parsers, analyzers, detectors, indexes, stores) and the public service layer in `service/`. Foundation only; the public entry point is `KarmaScanner.scan(root:)` → Codable `ScanReport`. | macOS, Linux |
+| `Sources/KarmaServer` | Vapor web server for the browser front end. Built when the `WebServer` package trait is on (the default). | macOS, Linux |
+| `Web/` | The browser front end: a Svelte 5 + Vite + TypeScript single-page app. | any browser |
+| `Sources/karma` | CLI: scans a directory and prints a JSON report; `--serve` starts the web front end. | macOS, Linux |
 | `Sources/KarmaAppKit` | The AppKit desktop app, plus macOS-only services (Keychain, CryptoKit backups, `Network` MCP server, RTF wiki store). | macOS |
 
 Build options:
 - `./build.sh` (macOS) builds `Karma Pro.app` from `KarmaCore` + `KarmaAppKit`.
-- `./build.sh --no-appkit` (any OS; the default on Linux) builds only the CLI, via SwiftPM (Swift 5.9+).
-- `swift build` / `swift test` build and test `KarmaCore` and the CLI; SwiftPM never compiles the AppKit sources.
+- `./build.sh --no-appkit` (any OS; the default on Linux) builds the `karma` CLI with the web front end via SwiftPM (Swift 6.1+) and the Svelte app (Node 20+, npm). The binary, `karma-web/` and `karma-resources/` end up in `.build/release/`.
+- `./build.sh --headless` builds the CLI without the web server (no Vapor, no Node).
+- `swift build` / `swift test` build and test `KarmaCore`, the CLI and the web server; `swift build --disable-default-traits` leaves the web server out. SwiftPM never compiles the AppKit sources.
 
 #### CLI usage
 The headless `karma` CLI runs the built-in static scan (AST + heuristic engines) over a directory and prints a JSON report. Stdout carries only the JSON document, so it can be piped straight into `jq` or another tool; progress and diagnostics go to stderr.
 
 ```
 karma [scan] <path> [options]   Statically scan a project; print a JSON report.
-karma --serve                   Start the web front end (not included in this build).
+karma --serve [--host <addr>] [--port <n>]   Start the web front end (default http://127.0.0.1:8790/).
 karma --help
 ```
 
@@ -40,7 +43,9 @@ karma --help
 | `--progress` | Report per-file progress on stderr. |
 | `-v`, `--verbose` | Forward the engine's diagnostic log to stderr. |
 
-Exit status: `0` scan completed, `1` scan failed (e.g. the path is not a directory), `2` usage error. A completed scan exits `0` whether or not it found anything. `--serve` is reserved for the upcoming web front end and is rejected by this build.
+Exit status: `0` scan completed (or the web server stopped cleanly), `1` scan failed (e.g. the path is not a directory) or the web server could not start, `2` usage error. A completed scan exits `0` whether or not it found anything.
+
+`--serve` starts the web front end (see below). A karma built with `--disable-default-traits` has no web server and rejects `--serve` with exit status `2`.
 
 Examples:
 ```sh

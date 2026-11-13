@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # The AppKit app cannot be built on Linux, so this job is the only check for
+  # changes under Sources/KarmaAppKit.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the AppKit app
+        run: ./build.sh --intel-only
+      - name: Test
+        run: swift test
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.1"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Web/package-lock.json
+      - name: Build the CLI without the web server
+        run: swift build --product karma --disable-default-traits
+      - name: Test
+        run: swift test
