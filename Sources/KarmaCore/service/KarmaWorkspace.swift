@@ -102,12 +102,15 @@ public final class KarmaWorkspace: @unchecked Sendable {
         let node = FileNode(url: url, isDirectory: true)
         node.loadDeeply()
 
-        let (generation, previousJob) = modify { state -> (Int, String?) in
+        let (generation, previousJob, previousReview) = modify { state -> (Int, String?, PRReviewSession?) in
             let previous = state.indexJobID
+            let review = state.reviewSession
             state = State(root: url, rootNode: node, indexState: "building", generation: state.generation + 1)
-            return (state.generation, previous)
+            return (state.generation, previous, review)
         }
         if let previousJob { jobs.cancel(previousJob) }
+        // Opening a folder while a review is on screen leaves the review, as `promptForDirectory` does.
+        if let previousReview { PRService.shared.reviewEnded(previousReview) }
 
         let id = jobs.start(kind: "index") { [self] context in
             let cancellation = context.cancellationToken()
@@ -149,12 +152,14 @@ public final class KarmaWorkspace: @unchecked Sendable {
     /// Closes the project and drops everything derived from it
     /// (`FileTreeViewController.clear` plus the cache resets).
     public func close() {
-        let previousJob = modify { state -> String? in
+        let (previousJob, previousReview) = modify { state -> (String?, PRReviewSession?) in
             let previous = state.indexJobID
+            let review = state.reviewSession
             state = State(generation: state.generation + 1)
-            return previous
+            return (previous, review)
         }
         if let previousJob { jobs.cancel(previousJob) }
+        if let previousReview { PRService.shared.reviewEnded(previousReview) }
         bus.post("workspace.changed", WorkspaceChangedEvent(root: nil, name: nil))
     }
 }
