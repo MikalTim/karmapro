@@ -1,4 +1,5 @@
 // by cipher.org.uk
+#if WebServer
 import XCTVapor
 @testable import KarmaServer
 
@@ -79,3 +80,4 @@ final class AuthTests: XCTestCase {
         }
     }
 }
+#endif

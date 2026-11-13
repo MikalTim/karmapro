@@ -71,8 +71,8 @@ let package = Package(
         .testTarget(
             name: "KarmaServerTests",
             dependencies: [
-                "KarmaServer",
-                .product(name: "XCTVapor", package: "vapor"),
+                .target(name: "KarmaServer", condition: .when(traits: ["WebServer"])),
+                .product(name: "XCTVapor", package: "vapor", condition: .when(traits: ["WebServer"])),
             ],
             path: "Tests/KarmaServerTests"
         ),
