@@ -40,5 +40,10 @@ let package = Package(
             dependencies: ["KarmaCore"],
             path: "Sources/karma"
         ),
+        .testTarget(
+            name: "KarmaCoreTests",
+            dependencies: ["KarmaCore"],
+            path: "Tests/KarmaCoreTests"
+        ),
     ]
 )
