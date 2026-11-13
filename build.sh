@@ -1,166 +1,53 @@
 #!/bin/bash
-# Builds the Karma Pro macOS app bundle from source.
+# Builds Karma Pro from source.
+#
+#   ./build.sh                 macOS: the AppKit app bundle ("Karma Pro.app").
+#   ./build.sh --intel-only    macOS: same, x86_64 slice only.
+#   ./build.sh --no-appkit     Any OS: only the headless `karma` CLI, via SwiftPM
+#                              (.build/release/karma). This is the default, and
+#                              the only option, on Linux.
 set -e
 cd "$(dirname "$0")"
+
+APPKIT=1
+[ "$(uname -s)" = "Darwin" ] || APPKIT=0
+
+# Architectures to build. Both slices are compiled and then combined into one
+# universal binary, so the app runs natively on Intel Macs and on Apple Silicon
+# without needing Rosetta.
+# Pass --intel-only to skip the arm64 slice while iterating on an Intel Mac.
+ARCHS=("x86_64" "arm64")
+case "${1:-}" in
+  --intel-only) ARCHS=("x86_64") ;;
+  --no-appkit|--headless) APPKIT=0 ;;
+  "") ;;
+  *)
+    echo "Unknown option: $1 (expected no arguments, --intel-only or --no-appkit)" >&2
+    exit 2
+    ;;
+esac
+
+if [ "$APPKIT" = 0 ]; then
+  if [ "${1:-}" = "--intel-only" ]; then
+    echo "--intel-only builds the AppKit app, which needs macOS." >&2
+    exit 2
+  fi
+  echo "Building the headless karma CLI (AppKit UI disabled)…"
+  swift build -c release --product karma
+  echo "Built $(swift build -c release --show-bin-path)/karma"
+  exit 0
+fi
 
 APP="Karma Pro.app"
 BIN="$APP/Contents/MacOS/Karma Pro"
 
-SOURCES=(
-  Sources/main.swift
-  Sources/AppDelegate.swift
-  Sources/main/MainWindowController.swift
-  Sources/main/FileTreeViewController.swift
-  Sources/main/SourceViewer.swift
-  Sources/main/VersionComparator.swift
-  Sources/main/UpdateSettings.swift
-  Sources/main/UpdateChecker.swift
-  Sources/main/UpdateMenuTarget.swift
-  Sources/main/SARIFExport.swift
-  Sources/utils/TypeResolver.swift
-  Sources/languages/JSFunctionParser.swift
-  Sources/languages/JSParser.swift
-  Sources/languages/JSExprParser.swift
-  Sources/languages/JSPlatform.swift
-  Sources/languages/JSAnalyzer.swift
-  Sources/detectors/JSSecurityDetector.swift
-  Sources/languages/SwiftParser.swift
-  Sources/languages/SwiftExprParser.swift
-  Sources/languages/SwiftPlatform.swift
-  Sources/languages/SwiftAnalyzer.swift
-  Sources/detectors/SwiftSecurityDetector.swift
-  Sources/utils/SyntaxHighlighter.swift
-  Sources/main/FileTree.swift
-  Sources/languages/Language.swift
-  Sources/graphs/CallGraph.swift
-  Sources/languages/CCFunctionParser.swift
-  Sources/languages/CAstNode.swift
-  Sources/languages/CAstToken.swift
-  Sources/languages/CTokenizer.swift
-  Sources/languages/CParser.swift
-  Sources/languages/CSymbolTable.swift
-  Sources/languages/CAnalyzer.swift
-  Sources/languages/JavaPlatform.swift
-  Sources/languages/JParser.swift
-  Sources/languages/JSymbolTable.swift
-  Sources/languages/JAnalyzer.swift
-  Sources/languages/CSharpPlatform.swift
-  Sources/languages/CSharpParser.swift
-  Sources/languages/CSharpAnalyzer.swift
-  Sources/languages/SolidityAnalyzer.swift
-  Sources/languages/SolidityParser.swift
-  Sources/languages/SolidityPlatform.swift
-  Sources/languages/ScriptPlatform.swift
-  Sources/languages/ScriptMethodParser.swift
-  Sources/languages/ScriptAnalyzer.swift
-  Sources/detectors/AstSecurityDetector.swift
-  Sources/detectors/SoliditySecurityDetector.swift
-  Sources/detectors/PHPSecurityDetector.swift
-  Sources/detectors/JavaSecurityDetector.swift
-  Sources/detectors/CSharpSecurityDetector.swift
-  Sources/detectors/GoSecurityDetector.swift
-  Sources/detectors/KotlinSecurityDetector.swift
-  Sources/detectors/PythonSecurityDetector.swift
-  Sources/detectors/RubySecurityDetector.swift
-  Sources/detectors/RustSecurityDetector.swift
-  Sources/detectors/CFamilySecurityDetector.swift
-  Sources/detectors/KernelAstDetector.swift
-  Sources/detectors/CFamilyWalkDetector.swift
-  Sources/graphs/GraphLayout.swift
-  Sources/graphs/DataFlowDiagramView.swift
-  Sources/graphs/DataFlowWindowController.swift
-  Sources/graphs/VariableFlowTracer.swift
-  Sources/graphs/VariableFlowDiagramView.swift
-  Sources/graphs/VariableFlowWindowController.swift
-  Sources/graphs/EntryPointsWindowController.swift
-  Sources/graphs/ProjectCallGraph.swift
-  Sources/graphs/ReachabilityWindowController.swift
-  Sources/graphs/ComplexityScatterView.swift
-  Sources/graphs/ComplexityScatterWindowController.swift
-  Sources/tools/EntryPointCatalog.swift
-  Sources/tools/EntryPointCollector.swift
-  Sources/tools/SimDebugEngine.swift
-  Sources/tools/SimDebugWindowController.swift
-  Sources/graphs/BacktraceParser.swift
-  Sources/graphs/BacktraceDiagramView.swift
-  Sources/graphs/BacktraceAnalyserWindowController.swift
-  Sources/graphs/ClassUsageWindowController.swift
-  Sources/graphs/ControlFlowParser.swift
-  Sources/indexes/DefinitionIndex.swift
-  Sources/indexes/DefinitionWindowController.swift
-  Sources/graphs/DiagramSupport.swift
-  Sources/main/EscClosableWindow.swift
-  Sources/languages/ObjCMethodParser.swift
-  Sources/languages/ObjCAnalyzer.swift
-  Sources/indexes/ProjectIndex.swift
-  Sources/main/SourceTree.swift
-  Sources/indexes/IndexBuildWindowController.swift
-  Sources/graphs/FlowChartView.swift
-  Sources/graphs/FlowPanelViewController.swift
-  Sources/utils/FileSearchWindowController.swift
-  Sources/main/HelpWindowController.swift
-  Sources/utils/LicensingWindowController.swift
-  Sources/main/SplashWindowController.swift
-  Sources/tools/NoteStore.swift
-  Sources/tools/BugStore.swift
-  Sources/AI/PromptStore.swift
-  Sources/AI/ProviderStore.swift
-  Sources/AI/ProviderManagerController.swift
-  Sources/AI/OpenRouterClient.swift
-  Sources/AI/AIToolRunner.swift
-  Sources/AI/AIWindowController.swift
-  Sources/AI/AISecurityScanner.swift
-  Sources/tools/NotePopoverController.swift
-  Sources/languages/ObjCAst.swift
-  Sources/languages/ObjCParser.swift
-  Sources/detectors/ObjCSecurityDetector.swift
-  Sources/detectors/VulnerabilityScanner.swift
-  Sources/main/ScanWindowController.swift
-  Sources/tools/NotesWindowController.swift
-  Sources/tools/BugListWindowController.swift
-  Sources/tools/BugEditorWindowController.swift
-  Sources/tools/BackupCrypto.swift
-  Sources/tools/WikiStore.swift
-  Sources/tools/WikiEditorWindowController.swift
-  Sources/tools/WikiWindowController.swift
-  Sources/tools/PackageDetector.swift
-  Sources/mcp/MCPMessage.swift
-  Sources/mcp/MCPHTTPServer.swift
-  Sources/mcp/MCPTools.swift
-  Sources/mcp/ScanJobs.swift
-  Sources/mcp/MCPService.swift
-  Sources/main/MCPSettingsWindowController.swift
-  Sources/tools/PackageLockParsers.swift
-  Sources/tools/PackageManifestParsers.swift
-  Sources/tools/OSVClient.swift
-  Sources/tools/PackageScanWindowController.swift
-  Sources/bayes/BayesianClassifier.swift
-  Sources/bayes/BayesianModelStore.swift
-  Sources/bayes/MLTrainingWindowController.swift
-  Sources/bayes/MLScanWindowController.swift
-  Sources/bayes/MLScanResultStore.swift
-  Sources/bayes/HeatmapWindowController.swift
-  Sources/utils/HighlightedLinesViewController.swift
-  Sources/pr/PRModels.swift
-  Sources/pr/ForgeSupport.swift
-  Sources/pr/ForgeAdapters.swift
-  Sources/pr/PRCredentialStore.swift
-  Sources/pr/GitRunner.swift
-  Sources/pr/DiffAwareClassifier.swift
-  Sources/pr/PRReviewSession.swift
-  Sources/pr/PRMonitor.swift
-  Sources/pr/PRNotifier.swift
-  Sources/pr/PRProgressPanel.swift
-  Sources/pr/PRLog.swift
-  Sources/pr/PRMarkdownReport.swift
-  Sources/pr/PRReviewCoordinator.swift
-  Sources/pr/PRMenuBarController.swift
-  Sources/pr/PRBannerView.swift
-  Sources/pr/PRDiffWindowController.swift
-  Sources/pr/PRReportWindowController.swift
-  Sources/pr/AccountsWindowController.swift
-  Sources/pr/MonitoredReposWindowController.swift
-  ) 
+# The AppKit app compiles the portable engine (Sources/KarmaCore) and the
+# macOS UI (Sources/KarmaAppKit) together as one module, exactly as before the
+# split, so the UI keeps using the engine's internal types directly.
+SOURCES=()
+while IFS= read -r source; do
+  SOURCES+=("$source")
+done < <(find Sources/KarmaCore Sources/KarmaAppKit -name '*.swift' | LC_ALL=C sort)
 
 BUILD_DIR="$(mktemp -d)"
 trap 'rm -rf "$BUILD_DIR"' EXIT
@@ -171,20 +58,6 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # the app works on older macOS (the default target is the *current* OS, which
 # would otherwise prevent the app from launching on anything older).
 MIN_MACOS="12.0"
-
-# Architectures to build. Both slices are compiled and then combined into one
-# universal binary, so the app runs natively on Intel Macs and on Apple Silicon
-# without needing Rosetta.
-# Pass --intel-only to skip the arm64 slice while iterating on an Intel Mac.
-ARCHS=("x86_64" "arm64")
-case "${1:-}" in
-  --intel-only) ARCHS=("x86_64") ;;
-  "") ;;
-  *)
-    echo "Unknown option: $1 (expected no arguments, or --intel-only)" >&2
-    exit 2
-    ;;
-esac
 
 echo "Compiling Karma Pro (${ARCHS[*]})…"
 SLICES=()
