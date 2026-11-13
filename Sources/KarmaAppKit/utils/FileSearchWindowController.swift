@@ -10,14 +10,7 @@ final class FileSearchWindowController: NSWindowController, NSOpenSavePanelDeleg
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
 
-    private struct Result {
-        let url: URL
-        let line: Int
-        let snippet: String
-        let column: Int
-    }
-
-    private var results: [Result] = []
+    private var results: [ProjectTextMatch] = []
     private var openFolderURL: URL?
     private var language: Language?
 
@@ -109,35 +102,10 @@ final class FileSearchWindowController: NSWindowController, NSOpenSavePanelDeleg
         }
 
         statusLabel.stringValue = "Searching…"
-        let trimmed = term
-        let search = trimmed.isEmpty ? nil : trimmed
+        let language = self.language
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-            var found: [Result] = []
-
-            if let search = search {
-                let fm = FileManager.default
-                if let enumerator = fm.enumerator(at: folder,
-                                                  includingPropertiesForKeys: [.isRegularFileKey],
-                                                  options: [.skipsHiddenFiles]) {
-                    for case let url as URL in enumerator {
-                        if self.shouldSkip(url) { continue }
-                        guard let contents = try? String(contentsOf: url, encoding: .utf8) else { continue }
-                        let ns = contents as NSString
-                        let lines = ns.components(separatedBy: "\n")
-                        var lineNumber = 0
-                        for line in lines {
-                            lineNumber += 1
-                            let range = (line as NSString).range(of: search, options: [.caseInsensitive])
-                            if range.location != NSNotFound {
-                                found.append(Result(url: url, line: lineNumber,
-                                                    snippet: line, column: range.location))
-                            }
-                        }
-                    }
-                }
-            }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let found = ProjectTextSearch.search(term: term, root: folder, language: language, isCancelled: { false })
 
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
@@ -148,15 +116,6 @@ final class FileSearchWindowController: NSWindowController, NSOpenSavePanelDeleg
                     : "\(found.count) match\(found.count == 1 ? "" : "es")"
             }
         }
-    }
-
-    private func shouldSkip(_ url: URL) -> Bool {
-        let ext = url.pathExtension.lowercased()
-        if ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" ||
-           ext == "pdf" || ext == "zip" || ext == "app" || ext == "framework" { return true }
-        // When a specific language is selected, only search files of that language.
-        if let lang = language, !lang.contains(url) { return true }
-        return false
     }
 
     @objc private func rowClicked(_ sender: Any?) {
@@ -170,7 +129,7 @@ final class FileSearchWindowController: NSWindowController, NSOpenSavePanelDeleg
     private func openSelected() {
         guard tableView.selectedRow >= 0, tableView.selectedRow < results.count else { return }
         let r = results[tableView.selectedRow]
-        onOpenResult?(r.url, r.line)
+        onOpenResult?(r.fileURL, r.line)
     }
 }
 
@@ -201,13 +160,13 @@ extension FileSearchWindowController: NSTableViewDataSource, NSTableViewDelegate
                 field.centerYAnchor.constraint(equalTo: cellView.centerYAnchor)
             ])
         }
-        let value = "\(r.url.lastPathComponent):\(r.line)\t\(r.snippet)"
+        let value = "\(r.fileURL.lastPathComponent):\(r.line)\t\(r.text)"
         let attributed = NSMutableAttributedString(string: value)
-        let headerRange = NSRange(location: 0, length: "\(r.url.lastPathComponent):\(r.line)".count)
+        let headerRange = NSRange(location: 0, length: "\(r.fileURL.lastPathComponent):\(r.line)".count)
         attributed.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 12, weight: .bold), range: headerRange)
         attributed.addAttribute(.foregroundColor, value: NSColor.controlAccentColor, range: headerRange)
         cellView.textField?.attributedStringValue = attributed
-        cellView.textField?.toolTip = r.url.path
+        cellView.textField?.toolTip = r.fileURL.path
         return cellView
     }
 }

@@ -156,86 +156,26 @@ final class FileTreeViewController: NSViewController, NSOutlineViewDataSource, N
             // The language filter still applies, because that is a deliberate
             // user choice; the pull request pruning is what Show All undoes.
             filteredRoot = selectedLanguage.map {
-                FileTreeViewController.filter(node: root, language: $0)
+                root.filtered(language: $0)
             } ?? root
         } else if prChangedPaths != nil {
             // PR filter first, then language, so the pruned tree only walks the
             // handful of files the PR touched rather than the whole project.
-            let prFiltered = FileTreeViewController.filter(node: root) { [weak self] node in
-                guard let self = self, self.prChangedPaths != nil else { return true }
-                return self.matchesPullRequest(path: node)
+            let prFiltered = root.filtered { node in
+                guard let paths = self.prChangedPaths else { return true }
+                return FileNode.matchesPullRequest(node, paths: paths, root: root.url)
             }
             if let lang = selectedLanguage {
-                filteredRoot = FileTreeViewController.filter(node: prFiltered, language: lang)
+                filteredRoot = prFiltered.filtered(language: lang)
             } else {
                 filteredRoot = prFiltered
             }
         } else if let lang = selectedLanguage {
-            filteredRoot = FileTreeViewController.filter(node: root, language: lang)
+            filteredRoot = root.filtered(language: lang)
         } else {
             filteredRoot = nil
         }
         reloadAndExpand()
-    }
-
-    /// True when a node is inside the set of paths a pull request changed.
-    ///
-    /// Matched on the path relative to the project root, because the diff is
-    /// reported repo-relative while the tree holds absolute URLs.
-    private func matchesPullRequest(path node: FileNode) -> Bool {
-        guard let paths = prChangedPaths, let root = rootNode else { return true }
-        let base = root.url.standardizedFileURL.path
-        let full = node.url.standardizedFileURL.path
-        var relative = full
-        if full.hasPrefix(base) {
-            relative = String(full.dropFirst(base.count))
-        }
-        while relative.hasPrefix("/") { relative.removeFirst() }
-
-        if node.isDirectory {
-            // Keep a directory when any changed path sits beneath it.
-            let prefix = relative.isEmpty ? "" : relative + "/"
-            return paths.contains { $0 == relative || $0.hasPrefix(prefix) }
-        }
-        return paths.contains(relative)
-    }
-
-    /// Returns a pruned copy of node keeping only files matching `language` (dirs kept if they contain matches).
-    private static func filter(node: FileNode, language: Language) -> FileNode {
-        guard node.isDirectory else {
-            return language.contains(node.url) ? node : FileNode.prunedCopy(of: node)
-        }
-        let filtered = FileNode.prunedCopy(of: node)
-        for child in node.children {
-            if child.isDirectory {
-                let sub = filter(node: child, language: language)
-                if !sub.children.isEmpty {
-                    filtered.children.append(sub)
-                }
-            } else if language.contains(child.url) {
-                filtered.children.append(child)
-            }
-        }
-        return filtered
-    }
-
-    /// Returns a pruned copy of node keeping only files accepted by `predicate`.
-    private static func filter(node: FileNode, predicate: (FileNode) -> Bool) -> FileNode {
-        guard node.isDirectory else {
-            return predicate(node) ? node : FileNode.prunedCopy(of: node)
-        }
-        let filtered = FileNode.prunedCopy(of: node)
-        for child in node.children {
-            if child.isDirectory {
-                let sub = filter(node: child, predicate: predicate)
-                if !sub.children.isEmpty {
-                    filtered.children.append(sub)
-                }
-            } else if predicate(child) {
-                filtered.children.append(child)
-            }
-        }
-        return filtered
     }
 
     func filter(query: String) {
@@ -244,24 +184,12 @@ final class FileTreeViewController: NSViewController, NSOutlineViewDataSource, N
         filteredResults = []
 
         if !trimmed.isEmpty {
-            guard var root = rootNode else { return }
+            guard let root = rootNode else { return }
             root.loadDeeply()
-            root = rootNode!
-            collectMatchingFiles(from: root, query: trimmed)
+            filteredResults = root.matchingFiles(query: trimmed)
         }
 
         outlineView.reloadData()
-    }
-
-    private func collectMatchingFiles(from node: FileNode, query: String) {
-        for child in node.children {
-            if child.name.lowercased().contains(query) {
-                filteredResults.append(child)
-            }
-            if child.isDirectory {
-                collectMatchingFiles(from: child, query: query)
-            }
-        }
     }
 
     // MARK: - Actions

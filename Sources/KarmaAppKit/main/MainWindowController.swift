@@ -544,7 +544,7 @@ final class MainWindowController: NSWindowController, NSSearchFieldDelegate {
         complexityController = nil
 
         fileTreeViewController.load(directory: session.workspace)
-        fileTreeViewController.changeBadges = badgeMap(for: session)
+        fileTreeViewController.changeBadges = session.fileBadges
         fileTreeViewController.setPullRequestFilter(paths: session.reviewablePaths)
 
         buildProjectSourceIndex(for: session.workspace)
@@ -779,24 +779,7 @@ final class MainWindowController: NSWindowController, NSSearchFieldDelegate {
             pullRequestReportWindow = PRReportWindowController()
         }
         pullRequestReportWindow?.showReport(markdown: report,
-                                            suggestedName: reportFileName(session))
-    }
-
-    private func reportFileName(_ session: PRReviewSession) -> String {
-        let slug = session.context.pr.title
-            .lowercased()
-            .map { $0.isLetter || $0.isNumber ? $0 : "-" }
-        let collapsed = String(String(slug).prefix(40))
-        return "PR-\(session.context.pr.number)-\(collapsed.isEmpty ? "review" : collapsed).md"
-    }
-
-    /// A/M badge per file name, keyed the way the tree looks nodes up.
-    private func badgeMap(for session: PRReviewSession) -> [String: String] {
-        var badges: [String: String] = [:]
-        for file in session.checkout.reviewableFiles {
-            badges[URL(fileURLWithPath: file.path).lastPathComponent] = file.kind.badge
-        }
-        return badges
+                                            suggestedName: session.reportFileName)
     }
 
     /// The Markdown report is reachable from the review banner, so it no longer
