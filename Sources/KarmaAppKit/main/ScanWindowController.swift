@@ -43,26 +43,6 @@ final class ScanWindowController: NSWindowController {
     /// Delay before each triage retry (index = retry number - 1).
     private static let triageRetryDelays: [Double] = [2, 8]
 
-    /// True when a failed triage request may succeed on a retry (rate limit,
-    /// upstream 5xx, dropped/timed-out connection). A bad key or model is not.
-    private static func isTransientTriageFailure(_ error: Error) -> Bool {
-        let lower = error.localizedDescription.lowercased()
-        if lower.contains("credit") || lower.contains("insufficient") || lower.contains("balance")
-            || lower.contains("402") || lower.contains("unauthorized") || lower.contains("401")
-            || lower.contains("not found") || lower.contains("no api key") {
-            return false
-        }
-        if lower.contains("429") || lower.contains("rate limit") || lower.contains("too many")
-            || lower.contains("quota") {
-            return true
-        }
-        return lower.contains("500") || lower.contains("502") || lower.contains("503")
-            || lower.contains("504") || lower.contains("timeout") || lower.contains("timed out")
-            || lower.contains("connection") || lower.contains("network")
-            || lower.contains("empty response") || lower.contains("overloaded")
-            || lower.contains("temporarily") || lower.contains("unavailable")
-    }
-
     private var findings: [ScanFinding] = [] {
         // Export is available exactly when the table has rows to export, so
         // every assignment that changes what is shown updates it here rather
@@ -105,14 +85,7 @@ final class ScanWindowController: NSWindowController {
 
     /// Line numbers the user has chosen to ignore (persisted in UserDefaults), keyed
     /// by the file path so the same finding stays hidden across relaunches.
-    private var ignoredLines: Set<String> {
-        get {
-            Set(UserDefaults.standard.stringArray(forKey: "ScanWindowController.ignoredLines") ?? [])
-        }
-        set {
-            UserDefaults.standard.set(Array(newValue), forKey: "ScanWindowController.ignoredLines")
-        }
-    }
+    private let ignoreList = FindingIgnoreList(defaultsKey: "ScanWindowController.ignoredLines")
 
     private var sortDescriptors: [NSSortDescriptor] = []
 
@@ -365,7 +338,7 @@ final class ScanWindowController: NSWindowController {
             aiPhaseActive = false
             setAIThinking(false)
             let cachedFindings = ScanWindowController.cachedFindings
-            findings = applyIgnoredFilter(cachedFindings)
+            findings = ignoreList.apply(cachedFindings)
             applySorting()
             resetTriage()
             tableView.reloadData()
@@ -425,7 +398,7 @@ final class ScanWindowController: NSWindowController {
             // and rows coloured by the same per-column rules. The "In PR?"
             // column is the only difference a pull-request scan adds.
             let merged = session.findings.map(\.finding)
-            self.findings = self.applyIgnoredFilter(merged)
+            self.findings = self.ignoreList.apply(merged)
             self.applySorting()
             self.rebuildAwareness()
             self.resetTriage()
@@ -476,92 +449,31 @@ final class ScanWindowController: NSWindowController {
         showPRColumn(false)
     }
 
-    /// Removes findings the user has ignored, based on persisted (file, line) keys.
-    private func applyIgnoredFilter(_ input: [ScanFinding]) -> [ScanFinding] {
-        let ignored = ignoredLines
-        guard !ignored.isEmpty else { return input }
-        return input.filter { !ignored.contains(ignoredKey(for: $0)) }
-    }
-
-    /// True when the row names the AI as one of the engines that reported it.
-    private func isAIRow(_ f: ScanFinding) -> Bool {
-        f.scanningSource.split(separator: ",").contains { $0.trimmingCharacters(in: .whitespaces) == "AI" }
-    }
-
-    /// Builds a stable key identifying a single finding across scans.
-    private func ignoredKey(for f: ScanFinding) -> String {
-        "\(f.fileURL.path)#\(f.line)"
-    }
-
     private func applySorting() {
         guard !sortDescriptors.isEmpty else { return }
         let current = sortDescriptors
         findings.sort { a, b in
             for d in current {
-                let result = compareFinding(a, b, descriptor: d)
+                let result = ScanFindingSort.compare(a, b, key: d.key ?? "", ascending: d.ascending)
                 if result != .orderedSame {
-                    // Reverse NSComparisonResult into a Bool for the ascending predicate.
-                    return (result == .orderedAscending) == d.ascending
+                    return result == .orderedAscending
                 }
             }
             return false
         }
     }
 
-    /// Compares two findings according to one sort descriptor WITHOUT Key-Value
-    /// Coding, because `ScanFinding` is a Swift struct (KVC would crash). The
-    /// descriptor's `key` selects an explicit field comparator, and `comparator`
-    /// (used by the File column) is honored when present.
-    private func compareFinding(_ a: ScanFinding, _ b: ScanFinding, descriptor d: NSSortDescriptor) -> ComparisonResult {
-        let key = d.key ?? ""
-        switch key {
-        case "line":
-            return compareValues(a.line, b.line)
-        case "severity":
-            return compareValues(a.severity.rawValue, b.severity.rawValue)
-        case "exploitability":
-            return compareValues(a.exploitability.rawValue, b.exploitability.rawValue)
-        case "scanningSource":
-            return compareValues(a.scanningSource, b.scanningSource)
-        case "crossFile":
-            return compareValues(a.crossFile ? 1 : 0, b.crossFile ? 1 : 0)
-        case "fileURL":
-            return compareValues(a.fileURL.lastPathComponent, b.fileURL.lastPathComponent)
-        default:
-            // Fall back to a string comparison on whatever text is in that column.
-            return compareValues(displayText(for: key, finding: a), displayText(for: key, finding: b))
-        }
-    }
-
-    private func displayText(for key: String, finding f: ScanFinding) -> String {
-        switch key {
-        case "category": return f.category
-        case "function": return f.function
-        case "fileURL": return f.fileURL.lastPathComponent
-        case "crossFile": return f.crossFile ? "Yes" : "No"
-        default: return ""
-        }
-    }
-
-    private func compareValues<T: Comparable>(_ a: T, _ b: T) -> ComparisonResult {
-        if a < b { return .orderedAscending }
-        if a > b { return .orderedDescending }
-        return .orderedSame
-    }
-
     @objc private func ignoreClicked(_ sender: Any?) {
         guard let f = selectedFinding() else { return }
-        var key = ignoredKey(for: f)
-        var set = ignoredLines
-        set.insert(key)
-        ignoredLines = set
+        var key = FindingIgnoreList.key(for: f)
+        ignoreList.ignore(f)
         // Update the in-memory flag so a later re-sort / reselect stays consistent.
-        if let idx = findings.firstIndex(where: { ignoredKey(for: $0) == key }) {
+        if let idx = findings.firstIndex(where: { FindingIgnoreList.key(for: $0) == key }) {
             findings[idx].ignored = true
-            key = ignoredKey(for: findings[idx])
+            key = FindingIgnoreList.key(for: findings[idx])
             _ = key
         }
-        findings = applyIgnoredFilter(findings)
+        findings = ignoreList.apply(findings)
         tableView.reloadData()
         ignoreButton.isEnabled = selectedFinding() != nil
     }
@@ -673,8 +585,8 @@ final class ScanWindowController: NSWindowController {
     /// VALID/INVALID is not retried, since a re-ask would likely repeat it.
     private func triageOne(_ f: ScanFinding, model: String, attempt: Int) {
         OpenRouterClient.shared.sendChat(
-            systemPrompt: Self.triageSystemPrompt,
-            userPrompt: Self.triagePrompt(for: f),
+            systemPrompt: ScanTriage.systemPrompt,
+            userPrompt: ScanTriage.prompt(for: f),
             model: model,
             scope: .scanner) { [weak self] result in
             DispatchQueue.main.async {
@@ -683,13 +595,13 @@ final class ScanWindowController: NSWindowController {
                 case .success(let text):
                     self.triageInFlight -= 1
                     self.triageChecked += 1
-                    if let verdict = Self.parseTriageVerdict(text) {
-                        self.triageVerdicts[self.ignoredKey(for: f)] = verdict
+                    if let verdict = ScanTriage.parseVerdict(text) {
+                        self.triageVerdicts[FindingIgnoreList.key(for: f)] = verdict
                     } else {
                         self.triageFailed += 1
                     }
                 case .failure(let error):
-                    if Self.isTransientTriageFailure(error), attempt < Self.maxTriageRetries {
+                    if ScanTriage.isTransientFailure(error), attempt < Self.maxTriageRetries {
                         // Slot stays occupied: the row is still being checked.
                         let delay = Self.triageRetryDelays[min(attempt, Self.triageRetryDelays.count - 1)]
                         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
@@ -745,49 +657,6 @@ final class ScanWindowController: NSWindowController {
         triageColumn?.isHidden = true
     }
 
-    private static let triageSystemPrompt = """
-    You are a security triage researcher. You are shown a finding reported by a static analysis scanner, including the code around the reported line. Decide whether it is a genuine, exploitable security issue or a false positive / non-issue / purely informational. Answer with exactly one word: VALID or INVALID.
-    """
-
-    private static func triagePrompt(for f: ScanFinding) -> String {
-        var parts: [String] = []
-        parts.append("Category: \(f.category)")
-        parts.append("Severity: \(f.severity.label)")
-        parts.append("Message: \(f.message)")
-        if let p = f.taintPath, !p.isEmpty { parts.append("Data flow: \(p)") }
-        parts.append("Function: \(f.function)")
-        parts.append("File: \(f.fileURL.path)")
-        parts.append("Line: \(f.line)")
-        if let snippet = codeSnippet(for: f) {
-            parts.append("Code around the line:\n\(snippet)")
-        }
-        parts.append("Answer with VALID or INVALID only.")
-        return parts.joined(separator: "\n")
-    }
-
-    /// Lines around the finding, capped, so the model judges real code.
-    private static func codeSnippet(for f: ScanFinding) -> String? {
-        let fm = FileManager.default
-        guard let attrs = try? fm.attributesOfItem(atPath: f.fileURL.path),
-              let size = attrs[.size] as? Int, size < 1_000_000 else { return nil }
-        guard let text = try? String(contentsOf: f.fileURL, encoding: .utf8) else { return nil }
-        let lines = text.components(separatedBy: "\n")
-        let start = max(0, f.line - 21)
-        let end = min(lines.count, f.line + 25)
-        guard start < end else { return nil }
-        return (start..<end).map { i in
-            let marker = (i + 1) == f.line ? ">>>" : "   "
-            return "\(marker) \(i + 1)| \(lines[i])"
-        }.joined(separator: "\n")
-    }
-
-    private static func parseTriageVerdict(_ raw: String) -> Bool? {
-        let t = raw.uppercased()
-        if t.contains("INVALID") { return false }
-        if t.contains("VALID") { return true }
-        return nil
-    }
-
     /// Runs a scan of `folder` on a background queue, stores the result in the
     /// shared cache, and shows results on the main thread. If the window is
     /// closed while the scan is running, the scan is cancelled and the results
@@ -829,7 +698,7 @@ final class ScanWindowController: NSWindowController {
                 self.progressBar.doubleValue = self.wantsAI ? 0.4 : 1.0
                 self.progressBar.isHidden = !self.wantsAI
                 self.progressBar.stopAnimation(nil)
-                self.findings = self.applyIgnoredFilter(result)
+                self.findings = self.ignoreList.apply(result)
                 self.applySorting()
                 self.tableView.reloadData()
                 self.updateStatus(totalCount: result.count, aiCount: 0)
@@ -895,7 +764,7 @@ final class ScanWindowController: NSWindowController {
                     // row whose engine column names both.
                     let merged = result.findings
                     ScanWindowController.cachedFindings = merged
-                    self.findings = self.applyIgnoredFilter(merged)
+                    self.findings = self.ignoreList.apply(merged)
                     self.applySorting()
                     self.resetTriage()
                     self.tableView.reloadData()
@@ -903,7 +772,7 @@ final class ScanWindowController: NSWindowController {
                     self.progressBar.isHidden = true
                     self.progressBar.stopAnimation(nil)
                     self.updateStatus(totalCount: merged.count,
-                                      aiCount: merged.filter { self.isAIRow($0) }.count,
+                                      aiCount: merged.filter { ScanFindingSort.isAIRow($0) }.count,
                                       aiCancelled: result.cancelled,
                                       aiIssues: result.errors)
                     self.rescanButton.isEnabled = true
@@ -1165,7 +1034,7 @@ extension ScanWindowController: NSTableViewDataSource, NSTableViewDelegate {
             cellView.textField?.alignment = .center
         case "triage":
             cellView.textField?.alignment = .center
-            if let valid = triageVerdicts[ignoredKey(for: f)] {
+            if let valid = triageVerdicts[FindingIgnoreList.key(for: f)] {
                 cellView.textField?.stringValue = valid ? "✓" : "✗"
                 cellView.textField?.font = NSFont.systemFont(ofSize: 14, weight: .bold)
                 cellView.textField?.textColor = valid ? .systemRed : .secondaryLabelColor
