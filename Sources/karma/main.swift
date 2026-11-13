@@ -5,6 +5,9 @@
 // piped straight into jq or another tool.
 import Foundation
 import KarmaCore
+#if WebServer
+import KarmaServer
+#endif
 #if canImport(Glibc)
 import Glibc
 #elseif canImport(Darwin)
@@ -14,7 +17,7 @@ import Darwin
 let usage = """
 Usage:
   karma [scan] <path> [options]   Statically scan a project; print a JSON report.
-  karma --serve                   Start the web front end (not included in this build).
+  karma --serve [--host <addr>] [--port <n>]   Start the web front end (default http://127.0.0.1:8790/).
   karma --help
 
 Scan options:
@@ -38,7 +41,7 @@ struct Options {
 
 enum Command {
     case scan(Options)
-    case serve
+    case serve(host: String, port: Int)
     case help
 }
 
@@ -48,6 +51,9 @@ struct UsageError: Error {
 
 func parse(_ arguments: [String]) throws -> Command {
     var options = Options()
+    var serve = false
+    var host: String?
+    var port: Int?
     var args = arguments[...]
     if args.first == "scan" { args = args.dropFirst() }
     while let arg = args.popFirst() {
@@ -55,7 +61,16 @@ func parse(_ arguments: [String]) throws -> Command {
         case "-h", "--help":
             return .help
         case "--serve":
-            return .serve
+            serve = true
+        case "--host":
+            guard let value = args.popFirst() else { throw UsageError(message: "--host needs an address") }
+            host = value
+        case "--port":
+            guard let value = args.popFirst() else { throw UsageError(message: "--port needs a number") }
+            guard let number = Int(value), (1...65535).contains(number) else {
+                throw UsageError(message: "invalid port '\(value)' (expected 1 to 65535)")
+            }
+            port = number
         case "--min-severity":
             guard let value = args.popFirst() else { throw UsageError(message: "--min-severity needs a value") }
             guard let level = ScanReport.Severity(rawValue: value.lowercased()) else {
@@ -77,6 +92,11 @@ func parse(_ arguments: [String]) throws -> Command {
             options.root = arg
         }
     }
+    if serve {
+        guard options.root == nil else { throw UsageError(message: "--serve does not take a project path") }
+        return .serve(host: host ?? "127.0.0.1", port: port ?? 8790)
+    }
+    if host != nil || port != nil { throw UsageError(message: "--host and --port only apply to --serve") }
     guard options.root != nil else { throw UsageError(message: "missing project path") }
     return .scan(options)
 }
@@ -133,15 +153,45 @@ func runScan(_ options: Options) -> Int32 {
     return 0
 }
 
+/// Points the engine at its bundled resources (prompts, models, Info.plist).
+/// First hit wins: `KARMA_RESOURCES`, `karma-resources` next to the binary,
+/// then `Resources_src` in the source tree this binary was built from. A
+/// candidate must contain `Info.plist`.
+func configureResources() {
+    var candidates: [URL] = []
+    if let env = ProcessInfo.processInfo.environment["KARMA_RESOURCES"], !env.isEmpty {
+        candidates.append(URL(fileURLWithPath: env, isDirectory: true))
+    }
+    if let executableDirectory = KarmaResources.executableDirectory {
+        candidates.append(executableDirectory.appendingPathComponent("karma-resources", isDirectory: true))
+    }
+    // <repo>/Sources/karma/main.swift → <repo>
+    let repo = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    candidates.append(repo.appendingPathComponent("Resources_src", isDirectory: true))
+    KarmaResources.directory = candidates.first {
+        FileManager.default.fileExists(atPath: $0.appendingPathComponent("Info.plist").path)
+    }
+}
+
+func runServe(host: String, port: Int) async -> Int32 {
+    #if WebServer
+    return await KarmaWebServer.run(host: host, port: port)
+    #else
+    writeStderr("karma: --serve is not available: this karma was built without the WebServer trait (rebuild without --disable-default-traits).")
+    return 2
+    #endif
+}
+
+configureResources()
 let status: Int32
 do {
     switch try parse(Array(CommandLine.arguments.dropFirst())) {
     case .help:
         print(usage)
         status = 0
-    case .serve:
-        writeStderr("karma: --serve is not available: the web front end is not part of this build.")
-        status = 2
+    case .serve(let host, let port):
+        status = await runServe(host: host, port: port)
     case .scan(let options):
         status = runScan(options)
     }
