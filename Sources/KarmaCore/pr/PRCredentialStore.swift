@@ -1,5 +1,6 @@
 // by cipher.org.uk
 import Foundation
+#if canImport(Security) && canImport(LocalAuthentication)
 import LocalAuthentication
 import Security
 
@@ -322,3 +323,4 @@ struct KeychainPRTokenStorage: PRTokenStorage {
         PRCredentialStore.invalidateSessionCache()
     }
 }
+#endif
