@@ -63,7 +63,7 @@ enum UpdateChecker {
         }
     }
 
-    /// Performs one check. `completion` is always delivered on the main queue.
+    /// Performs one check. `completion` is always delivered on `KarmaCallbackQueue.queue` (the main queue in the app).
     static func check(completion: @escaping (Outcome) -> Void) {
         var request = URLRequest(url: endpoint)
         request.timeoutInterval = timeout
@@ -72,7 +72,7 @@ enum UpdateChecker {
 
         let task = URLSession.shared.dataTask(with: request) { data, response, _ in
             let outcome = interpret(data: data, response: response)
-            DispatchQueue.main.async { completion(outcome) }
+            KarmaCallbackQueue.queue.async { completion(outcome) }
         }
         task.resume()
     }

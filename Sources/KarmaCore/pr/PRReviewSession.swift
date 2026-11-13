@@ -99,7 +99,7 @@ final class PRReviewSession {
                                                                      baseFindings: rebasedBase,
                                                                      root: self.checkout.workspace)
 
-            DispatchQueue.main.async {
+            KarmaCallbackQueue.queue.async {
                 self.findings = classified
                 self.didScan = true
                 completion(true)

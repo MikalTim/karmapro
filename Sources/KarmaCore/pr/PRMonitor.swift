@@ -34,6 +34,7 @@ final class PRMonitor {
     weak var presenter: PRMonitorPresenter?
     private(set) var items: [PRActionItem] = []
     private var timer: Timer?
+    private var sourceTimer: DispatchSourceTimer?
     private var isPolling = false
     private let store = PRStore.shared
 
@@ -154,7 +155,7 @@ final class PRMonitor {
         requestNotificationPermission()
         let poll = DispatchWorkItem { [weak self] in self?.pollNow() }
         pendingPoll = poll
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.startupDelay, execute: poll)
+        KarmaCallbackQueue.queue.asyncAfter(deadline: .now() + Self.startupDelay, execute: poll)
         scheduleTimer()
     }
 
@@ -163,6 +164,8 @@ final class PRMonitor {
         pendingPoll = nil
         timer?.invalidate()
         timer = nil
+        sourceTimer?.cancel()
+        sourceTimer = nil
     }
 
     /// Called when the master switch is toggled in the menu.
@@ -179,15 +182,25 @@ final class PRMonitor {
 
     private func scheduleTimer() {
         let minutes = max(1, store.pollingIntervalMinutes)
+        let queue = KarmaCallbackQueue.queue
         // Polls go to a background queue, but the timer itself must be created
-        // on the main run loop to fire.
-        DispatchQueue.main.async { [weak self] in
+        // on the callback queue to fire. The app's main queue needs a run loop
+        // timer; a front end with a queue of its own uses a dispatch timer.
+        queue.async { [weak self] in
             guard let self = self, store.monitoringEnabled else { return }
-            let timer = Timer(timeInterval: Double(minutes) * 60, repeats: true) { [weak self] _ in
-                self?.pollNow()
+            if queue === DispatchQueue.main {
+                let timer = Timer(timeInterval: Double(minutes) * 60, repeats: true) { [weak self] _ in
+                    self?.pollNow()
+                }
+                RunLoop.main.add(timer, forMode: .common)
+                self.timer = timer
+            } else {
+                let source = DispatchSource.makeTimerSource(queue: queue)
+                source.schedule(deadline: .now() + Double(minutes) * 60, repeating: Double(minutes) * 60)
+                source.setEventHandler { [weak self] in self?.pollNow() }
+                source.resume()
+                self.sourceTimer = source
             }
-            RunLoop.main.add(timer, forMode: .common)
-            self.timer = timer
         }
     }
 
@@ -247,7 +260,7 @@ final class PRMonitor {
             }
         }
 
-        group.notify(queue: .main) { [weak self] in
+        group.notify(queue: KarmaCallbackQueue.queue) { [weak self] in
             guard let self = self else { return }
             self.isPolling = false
             self.rebuild(from: collected, repos: repos)

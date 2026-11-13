@@ -304,9 +304,9 @@ final class OpenRouterStreamDelegate: NSObject, URLSessionDataDelegate {
         guard !finished else { return }
         finished = true
         stopWatchdog()
-        // Invalidate on the main queue (never from inside a delegate callback)
+        // Invalidate on the callback queue (the main queue in the app; never from inside a delegate callback)
         // to break the session↔delegate retain cycle once the stream is over.
-        DispatchQueue.main.async { [weak self] in
+        KarmaCallbackQueue.queue.async { [weak self] in
             self?.session?.finishTasksAndInvalidate()
         }
         onFinish(result)
