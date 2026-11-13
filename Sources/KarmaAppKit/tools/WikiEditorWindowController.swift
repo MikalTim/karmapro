@@ -204,7 +204,8 @@ final class WikiEditorWindowController: NSWindowController, NSTextViewDelegate, 
         }
         window?.title = info.title
         titleField.stringValue = info.title
-        if let body = store.body(slug: slug), body.length > 0 {
+        if let data = store.bodyRTF(slug: slug),
+           let body = NSAttributedString(rtf: data, documentAttributes: nil), body.length > 0 {
             textView.textStorage?.setAttributedString(body)
         }
         textView.setSelectedRange(NSRange(location: 0, length: 0))
@@ -219,7 +220,12 @@ final class WikiEditorWindowController: NSWindowController, NSTextViewDelegate, 
         guard !slug.isEmpty else { return }
         let body = textView.textStorage?.copy() as? NSAttributedString
             ?? NSAttributedString(string: textView.string)
-        let saved = store.savePage(slug: slug, title: titleField.stringValue, body: body)
+        let whole = NSRange(location: 0, length: body.length)
+        guard let rtf = try? body.data(from: whole, documentAttributes: [
+            .documentType: NSAttributedString.DocumentType.rtf,
+            .characterEncoding: String.Encoding.utf8.rawValue
+        ]) else { return }
+        let saved = store.savePage(slug: slug, title: titleField.stringValue, bodyRTF: rtf)
         if saved {
             isDirty = false
             updateStatus()

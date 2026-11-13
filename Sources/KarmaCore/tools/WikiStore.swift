@@ -1,5 +1,4 @@
 // by cipher.org.uk
-import AppKit
 import Foundation
 
 /// Global private wiki. Pages are rich-text documents (RTF) stored under
@@ -25,18 +24,20 @@ final class WikiStore {
         case noManifest
         case corruptData
         case invalidArchive
+        case toolMissing
         case importFailed(String)
         var errorDescription: String? {
             switch self {
             case .noManifest: return "The archive or folder contains no wiki manifest."
             case .corruptData: return "The wiki data is corrupted or unreadable."
             case .invalidArchive: return "The selected file is not a valid wiki archive."
+            case .toolMissing: return "The \"zip\" and \"unzip\" command-line tools are required for wiki backups. Install them (for example: sudo apt install zip unzip)."
             case .importFailed(let m): return m
             }
         }
     }
 
-    enum Conflict {
+    enum Conflict: String, Codable {
         case overwrite, rename, skip
     }
 
@@ -46,8 +47,10 @@ final class WikiStore {
 
     private var manifest: [String: PageInfo] = [:]
 
-    init() {
-        let base = FileManager.default
+    /// `directory` is where the wiki lives; nil uses the application support
+    /// folder (tests pass a temporary one).
+    init(directory: URL? = nil) {
+        let base = directory ?? FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("Karma Pro", isDirectory: true)
             .appendingPathComponent("Wiki", isDirectory: true)
@@ -126,27 +129,31 @@ final class WikiStore {
         pagesDir.appendingPathComponent(slug).appendingPathExtension("rtf")
     }
 
-    /// Loads the rich-text body of a page. Returns nil if the page is missing.
-    func body(slug: String) -> NSAttributedString? {
-        guard let data = try? Data(contentsOf: pageURL(slug: slug)) else { return nil }
-        return NSAttributedString(rtf: data, documentAttributes: nil)
+    /// Loads the rich-text body of a page as RTF bytes. Returns nil if the page
+    /// is missing.
+    func bodyRTF(slug: String) -> Data? {
+        try? Data(contentsOf: pageURL(slug: slug))
     }
 
+    /// Turns RTF bytes into searchable plain text. The AppKit app installs a
+    /// Cocoa-based extractor at launch; everything else uses `WikiRTF`.
+    static var plainTextExtractor: (Data) -> String = WikiRTF.plainText
+
     func bodyPlain(slug: String) -> String {
-        body(slug: slug)?.string ?? ""
+        Self.plainTextExtractor(bodyRTF(slug: slug) ?? Data())
     }
 
     // MARK: - Page mutations
 
-    /// Creates a page from rich text. `title` is used to derive the slug when
+    /// Creates a page from an RTF body. `title` is used to derive the slug when
     /// `slug` is not provided. Returns the slug of the stored page.
     @discardableResult
-    func createPage(title: String, body: NSAttributedString, slug: String? = nil) -> String {
+    func createPage(title: String, bodyRTF: Data, slug: String? = nil) -> String {
         rescanFiles()
         let now = Date().timeIntervalSince1970
         let finalSlug = slug ?? uniqueSlug(from: title)
         manifest[finalSlug] = PageInfo(slug: finalSlug, title: title.title, created: now, updated: now)
-        writeBody(body, slug: finalSlug)
+        writeBody(bodyRTF, slug: finalSlug)
         saveManifest()
         return finalSlug
     }
@@ -154,24 +161,19 @@ final class WikiStore {
     /// Overwrites the body (and title) of an existing page. Returns false if
     /// the page does not exist.
     @discardableResult
-    func savePage(slug: String, title: String, body: NSAttributedString) -> Bool {
+    func savePage(slug: String, title: String, bodyRTF: Data) -> Bool {
         guard manifest[slug] != nil else { return false }
         var info = manifest[slug]!
         info.title = title.title
         info.updated = Date().timeIntervalSince1970
         manifest[slug] = info
-        writeBody(body, slug: slug)
+        writeBody(bodyRTF, slug: slug)
         saveManifest()
         return true
     }
 
-    private func writeBody(_ body: NSAttributedString, slug: String) {
-        let whole = NSRange(location: 0, length: body.length)
-        guard let data = try? body.data(from: whole, documentAttributes: [
-            .documentType: NSAttributedString.DocumentType.rtf,
-            .characterEncoding: String.Encoding.utf8.rawValue
-        ]) else { return }
-        try? data.write(to: pageURL(slug: slug), options: .atomic)
+    private func writeBody(_ rtf: Data, slug: String) {
+        try? rtf.write(to: pageURL(slug: slug), options: .atomic)
     }
 
     @discardableResult
@@ -300,13 +302,30 @@ final class WikiStore {
     /// archive is encrypted. Conflicts are resolved through `onConflict`.
     /// Returns (imported, overwritten, renamed, skipped) counts.
     func `import`(from url: URL, password: String?, onConflict: (String) -> Conflict) throws -> (imported: Int, overwritten: Int, renamed: Int, skipped: Int) {
-        var data: Data?
+        let source = try unpackImport(from: url, password: password)
+        defer { source.cleanup() }
+        return try importFromFolder(source.folder, onConflict: onConflict)
+    }
+
+    /// The slugs an import of `url` would find already present in the wiki, in
+    /// the order `import` asks about them. Front ends that cannot answer
+    /// `onConflict` synchronously (the web UI) ask the user first, then call
+    /// `import` with the answers.
+    func importConflicts(from url: URL, password: String?) throws -> [String] {
+        let source = try unpackImport(from: url, password: password)
+        defer { source.cleanup() }
+        rescanFiles()
+        let content = try readImportFolder(source.folder)
+        return content.pending.keys.sorted().filter { manifest[$0] != nil }
+    }
+
+    /// Decrypts and unzips an archive into a temporary folder (or returns the
+    /// folder itself when `url` is a directory).
+    private func unpackImport(from url: URL, password: String?) throws -> (folder: URL, cleanup: () -> Void) {
         if url.hasDirectoryPath {
-            return try importFromFolder(url, onConflict: onConflict)
-        } else {
-            data = try Data(contentsOf: url)
+            return (url, {})
         }
-        guard var bytes = data else { throw WikiError.invalidArchive }
+        var bytes = try Data(contentsOf: url)
 
         if BackupCrypto.isEncrypted(bytes) {
             guard let pw = password, !pw.isEmpty else {
@@ -317,27 +336,30 @@ final class WikiStore {
 
         let temp = FileManager.default.temporaryDirectory
             .appendingPathComponent("karmawiki-import-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: temp) }
+        let cleanup = { try? FileManager.default.removeItem(at: temp) }
         try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
         let zipURL = temp.appendingPathComponent("blob.karmawiki")
-        try bytes.write(to: zipURL)
-        guard (try? WikiZip.unzip(zipURL: zipURL, into: temp)) == true else {
-            throw WikiError.invalidArchive
+        do {
+            try bytes.write(to: zipURL)
+            guard try WikiZip.unzip(zipURL: zipURL, into: temp) else {
+                throw WikiError.invalidArchive
+            }
+        } catch {
+            cleanup()
+            throw error
         }
-        return try importFromFolder(temp, onConflict: onConflict)
+        return (temp, { cleanup() })
     }
 
-    private func importFromFolder(_ folder: URL, onConflict: (String) -> Conflict) throws -> (imported: Int, overwritten: Int, renamed: Int, skipped: Int) {
-        rescanFiles()
-        var result = (imported: 0, overwritten: 0, renamed: 0, skipped: 0)
-
+    /// Reads the pages found in an unpacked backup folder.
+    private func readImportFolder(_ folder: URL) throws -> (pending: [String: PageInfo], pageURLs: [String: URL]) {
         var pending: [String: PageInfo] = [:]
         var pageURLs: [String: URL] = [:]
 
         let manifestFile = folder.appendingPathComponent("manifest.json")
         if let data = try? Data(contentsOf: manifestFile),
            let list = try? JSONDecoder().decode([PageInfo].self, from: data) {
-            pending = Dictionary(uniqueKeysWithValues: list.map { ($0.slug, $0) })
+            pending = Dictionary(list.map { ($0.slug, $0) }, uniquingKeysWith: { first, _ in first })
         }
 
         var pagesFolder = folder.appendingPathComponent("pages", isDirectory: true)
@@ -358,13 +380,21 @@ final class WikiStore {
         }
 
         guard !pending.isEmpty else { throw WikiError.noManifest }
+        return (pending, pageURLs)
+    }
 
-        for (slug, info) in pending {
-            let loaded: NSAttributedString
-            if let bodyURL = pageURLs[slug], let data = try? Data(contentsOf: bodyURL) {
-                loaded = NSAttributedString(rtf: data, documentAttributes: nil) ?? NSAttributedString(string: info.title)
+    private func importFromFolder(_ folder: URL, onConflict: (String) -> Conflict) throws -> (imported: Int, overwritten: Int, renamed: Int, skipped: Int) {
+        rescanFiles()
+        var result = (imported: 0, overwritten: 0, renamed: 0, skipped: 0)
+        let content = try readImportFolder(folder)
+
+        for slug in content.pending.keys.sorted() {
+            let info = content.pending[slug]!
+            let loaded: Data
+            if let bodyURL = content.pageURLs[slug], let data = try? Data(contentsOf: bodyURL) {
+                loaded = data
             } else {
-                loaded = NSAttributedString(string: info.title)
+                loaded = WikiRTF.encode(WikiDocument(plain: info.title))
             }
 
             if manifest[slug] != nil {
@@ -395,29 +425,39 @@ final class WikiStore {
 
 /// Minimal zip/unzip helpers around the system tools. Used by `WikiStore` so
 /// backups round-trip without pulling in a third-party archive dependency.
+/// The tools are found through `env`, so they work wherever they are installed
+/// (`/usr/bin` on macOS, `/usr/bin` or `/bin` on Linux).
 enum WikiZip {
+    /// Runs `tool` and returns its exit status. Throws `WikiStore.WikiError.toolMissing`
+    /// when the tool cannot be started or is not installed.
+    private static func run(_ tool: String, _ arguments: [String], in directory: URL? = nil) throws -> Int32 {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = [tool] + arguments
+        process.currentDirectoryURL = directory
+        // `env` prints "No such file or directory" for a missing tool; keep that off the terminal.
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            throw WikiStore.WikiError.toolMissing
+        }
+        process.waitUntilExit()
+        if process.terminationStatus == 127 { throw WikiStore.WikiError.toolMissing }
+        return process.terminationStatus
+    }
+
     /// Zips the entire directory (relative paths preserved) into `to`.
     @discardableResult
     static func zip(directory: URL, to: URL) throws -> Bool {
         try? FileManager.default.removeItem(at: to)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-        process.arguments = ["-r", "-q", to.path, "."]
-        process.currentDirectoryURL = directory
-        try process.run()
-        process.waitUntilExit()
-        return process.terminationStatus == 0
+        return try run("zip", ["-r", "-q", to.path, "."], in: directory) == 0
     }
 
     /// Extracts a zip archive into the destination directory.
     @discardableResult
     static func unzip(zipURL: URL, into: URL) throws -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        process.arguments = ["-q", "-o", zipURL.path, "-d", into.path]
-        try process.run()
-        process.waitUntilExit()
-        return process.terminationStatus == 0
+        try run("unzip", ["-q", "-o", zipURL.path, "-d", into.path]) == 0
     }
 }
 

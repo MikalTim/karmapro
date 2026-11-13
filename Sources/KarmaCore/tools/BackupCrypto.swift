@@ -1,7 +1,10 @@
 // by cipher.org.uk
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
-import Security
+#else
+import Crypto
+#endif
 
 /// Optional password protection for exported bug-tracker backups.
 ///
@@ -25,11 +28,9 @@ enum BackupCrypto {
     /// Encrypts a JSON payload with a password. Returns the full backup file bytes.
     static func seal(_ jsonData: Data, password: String) throws -> Data {
         guard !password.isEmpty else { throw BackupError.emptyPassword }
-        var salt = [UInt8](repeating: 0, count: saltSize)
-        _ = SecRandomCopyBytes(kSecRandomDefault, salt.count, &salt)
-
-        var nonceBytes = [UInt8](repeating: 0, count: nonceSize)
-        _ = SecRandomCopyBytes(kSecRandomDefault, nonceBytes.count, &nonceBytes)
+        var generator = SystemRandomNumberGenerator()
+        let salt = (0..<saltSize).map { _ in UInt8.random(in: .min ... .max, using: &generator) }
+        let nonceBytes = (0..<nonceSize).map { _ in UInt8.random(in: .min ... .max, using: &generator) }
 
         let key = deriveKey(password: password, salt: Data(salt))
         let nonce = try AES.GCM.Nonce(data: Data(nonceBytes))

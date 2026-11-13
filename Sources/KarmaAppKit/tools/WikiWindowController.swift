@@ -197,8 +197,7 @@ final class WikiWindowController: NSWindowController, NSTableViewDataSource, NST
 
     @objc private func newPageClicked() {
         let title = promptForText(title: "New Page", prompt: "Name of the new page:")
-        let body = NSAttributedString(string: "")
-        let slug = store.createPage(title: title ?? "Untitled", body: body)
+        let slug = store.createPage(title: title ?? "Untitled", bodyRTF: WikiRTF.encode(WikiDocument()))
         reload()
         openEditor(slug: slug)
     }
@@ -251,14 +250,13 @@ final class WikiWindowController: NSWindowController, NSTableViewDataSource, NST
             return
         }
         guard store.pageInfo(slug: slug) != nil else {
-            let body = NSAttributedString(string: "")
-            let created = store.createPage(title: titleFromSlug(slug), body: body, slug: slug)
+            let created = store.createPage(title: titleFromSlug(slug), bodyRTF: WikiRTF.encode(WikiDocument()), slug: slug)
             return openEditor(slug: created)
         }
         let editor = WikiEditorWindowController(slug: slug)
         editor.onNavigate = { [weak self, weak editor] target in
             guard let self = self else { return }
-            let slug = self.store.resolve(target) ?? self.store.createPage(title: target, body: NSAttributedString(string: ""))
+            let slug = self.store.resolve(target) ?? self.store.createPage(title: target, bodyRTF: WikiRTF.encode(WikiDocument()))
             editor?.close()
             self.reload()
             self.openEditor(slug: slug)
