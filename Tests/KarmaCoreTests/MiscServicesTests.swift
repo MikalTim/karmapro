@@ -382,16 +382,60 @@ final class MiscServicesTests: XCTestCase {
     func testDebuggerStepIntoEntersACalledFunction() throws {
         try assertLibraryIsIsolated()
         let dir = try makeTemporaryDirectory()
-        try writeFiles(["sim.c": Self.simSource], under: dir)
+        let source = """
+            int square(int v) {
+                int r = v * v;
+                return r;
+            }
+            int calc(int a, int b) {
+                int s = a + b;
+                int q = square(s);
+                for (int i = 0; i < 3; i++) {
+                    q = q + i;
+                }
+                return q;
+            }
+            """
+        try writeFiles(["sim.c": source], under: dir)
         let path = dir.appendingPathComponent("sim.c").path
 
         _ = try KarmaWorkspace.shared.open(root: dir.path)
         waitUntil("the source index", { KarmaWorkspace.shared.read { $0.sourceIndex != nil } })
-        _ = try SimDebugService.shared.load(path: path, function: "caller")
+        let loaded = try SimDebugService.shared.load(path: path, function: "calc")
+        XCTAssertEqual(loaded.selectedFrameIndex, 0)
+        XCTAssertEqual(loaded.frames.filter(\.isSelected).map(\.index), [0])
         let beforeInto = try SimDebugService.shared.step(mode: "over")
         let into = try SimDebugService.shared.step(mode: "into")
         XCTAssertEqual(into.stepCount, beforeInto.stepCount + 1)
         XCTAssertNotEqual(into.currentLine, beforeInto.currentLine, "step into moves to another line")
+        let callee = try SimDebugService.shared.step(mode: "into")
+        XCTAssertEqual(callee.badge, "square()")
+        XCTAssertEqual(callee.statusText, "r = 10000")
+        XCTAssertEqual(callee.frames.map(\.functionName), ["calc", "square"])
+        XCTAssertEqual(callee.frames.filter(\.isActive).map(\.index), [1])
+        XCTAssertEqual(callee.selectedFrameIndex, 0)
+        XCTAssertEqual(callee.frames.filter(\.isSelected).map(\.index), [0])
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: callee.watchRows.map { ($0.name, $0.value) }),
+                       ["a": "50", "b": "50", "s": "100", "q": "nil"])
+
+        let selected = try SimDebugService.shared.selectFrame(index: 1)
+        XCTAssertEqual(selected.selectedFrameIndex, 1)
+        XCTAssertEqual(selected.frames.filter(\.isSelected).map(\.index), [1])
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: selected.watchRows.map { ($0.name, $0.value) }),
+                       ["v": "100", "r": "10000"])
+        XCTAssertEqual(selected.badge, callee.badge)
+        XCTAssertEqual(selected.statusText, callee.statusText)
+        let unchanged = SimDebugService.shared.state()
+        XCTAssertEqual(unchanged.selectedFrameIndex, 1)
+        XCTAssertEqual(unchanged.watchRows.map(\.name), selected.watchRows.map(\.name))
+        XCTAssertEqual(unchanged.watchRows.map(\.value), selected.watchRows.map(\.value))
+
+        let next = try SimDebugService.shared.step(mode: "into")
+        XCTAssertEqual(next.selectedFrameIndex, 0)
+        XCTAssertEqual(next.frames.filter(\.isSelected).map(\.index), [0])
+        let reset = SimDebugService.shared.reset()
+        XCTAssertEqual(reset.selectedFrameIndex, 0)
+        XCTAssertEqual(reset.frames.filter(\.isSelected).map(\.index), [0])
     }
 
     // MARK: - Entry points

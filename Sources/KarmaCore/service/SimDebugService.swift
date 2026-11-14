@@ -313,7 +313,8 @@ public final class SimDebugService {
         } else {
             statusText = step.effects.joined(separator: "  |  ")
         }
-        selectedFrameIndex = step.activeFrameIndex
+        // AppKit selects stack row zero after reloading, independently of the active frame.
+        selectedFrameIndex = step.frames.isEmpty ? step.activeFrameIndex : 0
     }
 
     /// Switches the source pane to the active frame's file when it differs from the shown one.
