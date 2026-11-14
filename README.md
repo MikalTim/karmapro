@@ -120,6 +120,7 @@ $karma --serve --host 0.0.0.0              # reachable from other machines: prin
 - There is one open project for the whole server, like the single main window of the macOS app, so every browser tab shows the same state. Closing the tab leaves the server running; **Karma Pro > Quit Karma Pro** stops it.
 - The "choose a folder" dialogs browse the file system of the machine the server runs on. Importing a file uploads it from the browser, and exporting downloads it.
 - In the debugger, selecting a stack frame shows that frame's variables. Each step selects the first stack row again, matching the desktop app; the function badge still identifies the active call.
+- Closing Security scan, Entry points, or Class usage cancels its running work. File searches, package scans and detection, and licence reports continue when their windows close.
 - Pull request access tokens are kept in the macOS Keychain on macOS, and in a private file (`~/.local/share/KarmaPro/PullRequestTokens.json`, mode `0600`) elsewhere. Wiki backups need the `zip` and `unzip` command-line tools.
 - Development: run `karma --serve` and, in `Web/`, `npm ci && npm run dev` (Vite on port 5173 proxies `/api` to port 8790). `npm run check` type-checks, `npm test` runs the unit tests, and `npm run e2e` runs the browser tests against `../.build/release/karma` (or the binary named in `KARMA_BIN`).
 

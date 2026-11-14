@@ -167,7 +167,7 @@ final class ProjectCallGraph {
 
         var remoteEntries = Set<FuncRef>()
         var localEntries = Set<FuncRef>()
-        let groups = EntryPointCollector.collect(sourceIndex: sourceIndex, includeIndirect: false)
+        let groups = EntryPointCollector.collect(sourceIndex: sourceIndex, includeIndirect: false, isCancelled: { false })
         for group in groups {
             for site in group.sites {
                 guard let ref = Self.enclosingRef(containing: site.charIndex,

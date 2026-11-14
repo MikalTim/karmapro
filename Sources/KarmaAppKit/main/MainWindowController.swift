@@ -833,7 +833,8 @@ final class MainWindowController: NSWindowController, NSSearchFieldDelegate {
         let stdRoot = projectRoot.standardizedFileURL
         if let cached = variableFlowTracerCache, cached.root == stdRoot {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                let result = cached.tracer.trace(variableName: variableName, in: fileURL, charIndex: charIndex)
+                let result = cached.tracer.trace(variableName: variableName, in: fileURL, charIndex: charIndex,
+                                                 isCancelled: { false })
                 DispatchQueue.main.async {
                     self?.presentVariableFlow(result: result, variableName: variableName)
                 }
@@ -849,7 +850,8 @@ final class MainWindowController: NSWindowController, NSSearchFieldDelegate {
             let tracer = VariableFlowTracer(sourceIndex: pidx)
             variableFlowTracerCache = (stdRoot, tracer)
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                let result = tracer.trace(variableName: variableName, in: fileURL, charIndex: charIndex)
+                let result = tracer.trace(variableName: variableName, in: fileURL, charIndex: charIndex,
+                                          isCancelled: { false })
                 DispatchQueue.main.async {
                     self?.presentVariableFlow(result: result, variableName: variableName)
                 }
@@ -881,7 +883,8 @@ final class MainWindowController: NSWindowController, NSSearchFieldDelegate {
                 }
             })
             guard !cancellation.isCancelled, !tracer.wasCancelled else { return }
-            let result = tracer.trace(variableName: variableName, in: fileURL, charIndex: charIndex)
+            let result = tracer.trace(variableName: variableName, in: fileURL, charIndex: charIndex,
+                                      isCancelled: { cancellation.isCancelled })
             guard !cancellation.isCancelled else { return }
             DispatchQueue.main.async {
                 guard let self = self, !cancellation.isCancelled else { return }

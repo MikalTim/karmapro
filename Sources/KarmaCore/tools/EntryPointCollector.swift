@@ -58,9 +58,12 @@ enum EntryPointCollector {
     ///     data, deserialization) are scanned too. Primary tiers are always
     ///     scanned. Callers satisfy `includeIndirect` lazily via this param.
     ///   - progress: (processedFiles, totalFiles) — called frequently.
+    ///   - isCancelled: stops before the next file or site; partial groups are not published by callers.
     static func collect(sourceIndex: ProjectSourceIndex,
                         includeIndirect: Bool,
+                        isCancelled: () -> Bool,
                         progress: ((Int, Int) -> Void)? = nil) -> [EntryGroup] {
+        guard !isCancelled() else { return [] }
         let files = Array(sourceIndex.entries.values).sorted { $0.url.path < $1.url.path }
         var groups: [String: EntryGroup] = [:]
         var seen: Set<String> = []
@@ -73,10 +76,13 @@ enum EntryPointCollector {
         progress?(0, totalCount)
 
         outer: for entry in files {
+            guard !isCancelled() else { return [] }
             let c1 = Self.matchedSites(source: entry.source,
                                        tokens: entry.tokens,
                                        url: entry.url,
-                                       includeIndirect: includeIndirect)
+                                       includeIndirect: includeIndirect,
+                                       isCancelled: isCancelled)
+            guard !isCancelled() else { return [] }
             // Structural checks (C2–C6). A handler/route/binding site is
             // suppressed when its function body already contains a catalog
             // (C1) receive site — the concrete call is the more specific check.
@@ -84,8 +90,11 @@ enum EntryPointCollector {
                                                   tokens: entry.tokens,
                                                   url: entry.url,
                                                   funcs: entry.funcs,
-                                                  c1Offsets: Set(c1.map { $0.charIndex }))
+                                                  c1Offsets: Set(c1.map { $0.charIndex }),
+                                                  isCancelled: isCancelled)
+            guard !isCancelled() else { return [] }
             for site in c1 + structural {
+                guard !isCancelled() else { return [] }
                 let key = "\(site.fileURL.path)#\(site.charIndex)#\(site.apiName)#\(site.sourceKind)"
                 guard seen.insert(key).inserted else { continue }
                 if total >= Self.siteCap {
@@ -102,6 +111,7 @@ enum EntryPointCollector {
             done += 1
             if done % flushEvery == 0 { progress?(done, totalCount) }
         }
+        guard !isCancelled() else { return [] }
         progress?(totalCount, totalCount)
 
         let result = groups
@@ -133,12 +143,13 @@ enum EntryPointCollector {
     }()
 
     static func matchedSites(source: String, tokens: [CAstToken], url: URL,
-                             includeIndirect: Bool) -> [EntrySite] {
+                             includeIndirect: Bool, isCancelled: () -> Bool) -> [EntrySite] {
         guard let lang = EPLanguage.from(ext: url.pathExtension) else { return [] }
         let lines = source.components(separatedBy: "\n")
         var sites: [EntrySite] = []
 
         for (i, token) in tokens.enumerated() {
+            guard !isCancelled() else { return [] }
             guard token.kind == .identifier else { continue }
             guard let candidates = entriesByLeaf[token.text] else { continue }
             for entry in candidates {
@@ -257,11 +268,12 @@ enum EntryPointCollector {
                                 tokens: [CAstToken],
                                 url: URL,
                                 funcs: [CCFunctionParser.FunctionDef],
-                                c1Offsets: Set<Int>) -> [EntrySite] {
+                                c1Offsets: Set<Int>, isCancelled: () -> Bool) -> [EntrySite] {
         guard let lang = EPLanguage.from(ext: url.pathExtension) else { return [] }
         let lines = source.components(separatedBy: "\n")
         var out: [EntrySite] = []
         for def in funcs {
+            guard !isCancelled() else { return [] }
             out.append(contentsOf: structuralSites(for: def,
                                                    tokens: tokens,
                                                    lines: lines,

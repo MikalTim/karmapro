@@ -17,7 +17,7 @@ final class GraphAndLicenseLogicTests: XCTestCase {
         }
         """
         let url = URL(fileURLWithPath: "/tmp/Main.java")
-        let hits = ClassUsageScanner.findOccurrences(of: "Widget", in: java, inFile: url)
+        let hits = ClassUsageScanner.findOccurrences(of: "Widget", in: java, inFile: url, isCancelled: { false })
 
         XCTAssertEqual(hits.map(\.line), [3, 4])
         XCTAssertTrue(hits[0].snippet.hasPrefix("new Widget(1)"))
@@ -31,7 +31,7 @@ final class GraphAndLicenseLogicTests: XCTestCase {
         let v = Widget.make()
         """
         let hits = ClassUsageScanner.findOccurrences(of: "Widget", in: swift,
-                                                     inFile: URL(fileURLWithPath: "/tmp/a.swift"))
+                                                     inFile: URL(fileURLWithPath: "/tmp/a.swift"), isCancelled: { false })
         XCTAssertTrue(hits.isEmpty)
     }
 
@@ -41,7 +41,7 @@ final class GraphAndLicenseLogicTests: XCTestCase {
         Widget q(4);
         """
         let hits = ClassUsageScanner.findOccurrences(of: "Widget", in: cpp,
-                                                     inFile: URL(fileURLWithPath: "/tmp/a.cpp"))
+                                                     inFile: URL(fileURLWithPath: "/tmp/a.cpp"), isCancelled: { false })
         XCTAssertEqual(hits.map(\.line), [1])
         XCTAssertTrue(hits[0].snippet.hasPrefix("new Widget(3)"))
     }
@@ -53,10 +53,66 @@ final class GraphAndLicenseLogicTests: XCTestCase {
             "src/test/Skip.java": "class Skip { Object o = new Widget(9); }\n",
             "src/readme.txt": "new Widget(7)\n",
         ])
-        let hits = ClassUsageScanner.scanInstantiations(of: "Widget", in: fixture.root)
+        let hits = ClassUsageScanner.scanInstantiations(of: "Widget", in: fixture.root, isCancelled: { false })
 
         let found = Set(hits.map { "\($0.fileURL.lastPathComponent):\($0.line)" })
         XCTAssertEqual(found, ["Main.java:2", "Tools.cs:3"])
+    }
+
+    func testClassUsageCancellationStopsBeforeExhaustingSites() {
+        let source = (0..<8).map { "Object v\($0) = new Widget(\($0));" }.joined(separator: "\n")
+        var checks = 0
+        let hits = ClassUsageScanner.findOccurrences(of: "Widget", in: source,
+                                                     inFile: URL(fileURLWithPath: "/tmp/Main.java"),
+                                                     isCancelled: {
+            checks += 1
+            return checks >= 4
+        })
+        XCTAssertEqual(checks, 4)
+        XCTAssertLessThan(hits.count, 8)
+    }
+
+    func testClassUsageCancellationStopsBeforeExhaustingFiles() throws {
+        let fixture = try ScanFixture(Dictionary(uniqueKeysWithValues: (0..<8).map {
+            ("Main\($0).java", "class Main\($0) { Object v = new Widget(1); }")
+        }))
+        var checks = 0
+        let hits = ClassUsageScanner.scanInstantiations(of: "Widget", in: fixture.root, isCancelled: {
+            checks += 1
+            return checks >= 5
+        })
+        XCTAssertLessThanOrEqual(checks, 6)
+        XCTAssertLessThan(hits.count, 8)
+    }
+
+    func testEntryCollectionCancellationStopsBeforeExhaustingFiles() throws {
+        let fixture = try ScanFixture(Dictionary(uniqueKeysWithValues: (0..<4).map {
+            ("input\($0).c", "void read\($0)(int fd) { char buf[8]; recv(fd, buf, 8, 0); }")
+        }))
+        let index = ProjectSourceIndex(projectRoot: fixture.root)
+        var cancelled = false
+        var processed: [Int] = []
+        let groups = EntryPointCollector.collect(sourceIndex: index, includeIndirect: false,
+                                                  isCancelled: { cancelled }) { done, _ in
+            processed.append(done)
+            if done == 1 { cancelled = true }
+        }
+        XCTAssertTrue(groups.isEmpty, "Cancelled collection must not return partial groups for publication.")
+        XCTAssertEqual(processed, [0, 1], "The collector must stop rather than report the fixture exhausted.")
+    }
+
+    func testEntryCollectionCancellationAfterLastFileDiscardsGroups() throws {
+        let fixture = try ScanFixture([
+            "input.c": "void read(int fd) { char buf[8]; recv(fd, buf, 8, 0); }"
+        ])
+        let index = ProjectSourceIndex(projectRoot: fixture.root)
+        var cancelled = false
+        let groups = EntryPointCollector.collect(sourceIndex: index, includeIndirect: false,
+                                                  isCancelled: { cancelled }) { done, total in
+            if done == total { cancelled = true }
+        }
+        XCTAssertTrue(cancelled)
+        XCTAssertTrue(groups.isEmpty)
     }
 
     // MARK: - ReachabilityPaths

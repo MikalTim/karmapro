@@ -571,7 +571,8 @@ public enum FlowService {
         let fileURL = URL(fileURLWithPath: path).standardizedFileURL
         return KarmaJobCenter.shared.start(kind: "variable-flow") { context in
             guard let tracer = FlowService.tracer(root: root, generation: generation, context: context) else { return nil }
-            let result = tracer.trace(variableName: variable, in: fileURL, charIndex: location)
+            let result = tracer.trace(variableName: variable, in: fileURL, charIndex: location,
+                                      isCancelled: { context.isCancelled })
             return KarmaJSON.data(FlowService.variableFlowDTO(result))
         }
     }
@@ -656,8 +657,10 @@ public enum FlowService {
     /// Returns the job id; the result is a `ClassUsageDTO`.
     public static func classUsage(className: String) throws -> String {
         let root = try KarmaWorkspace.shared.requireRoot()
-        return KarmaJobCenter.shared.start(kind: "class-usage") { _ in
-            let occurrences = ClassUsageScanner.scanInstantiations(of: className, in: root)
+        return KarmaJobCenter.shared.start(kind: "class-usage") { context in
+            let occurrences = ClassUsageScanner.scanInstantiations(of: className, in: root,
+                                                                  isCancelled: { context.isCancelled })
+            guard !context.isCancelled else { return nil }
             return KarmaJSON.data(FlowService.classUsageDTO(className: className, occurrences: occurrences))
         }
     }

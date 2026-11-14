@@ -260,6 +260,7 @@ final class EntryPointsWindowController: NSWindowController, NSOutlineViewDataSo
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let groups = EntryPointCollector.collect(sourceIndex: index,
                                                      includeIndirect: false,
+                                                     isCancelled: { cancel.isCancelled },
                                                      progress: { done, total in
                 DispatchQueue.main.async {
                     self?.setProgress(done: done, total: total)
@@ -302,6 +303,7 @@ final class EntryPointsWindowController: NSWindowController, NSOutlineViewDataSo
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let groups = EntryPointCollector.collect(sourceIndex: index,
                                                      includeIndirect: true,
+                                                     isCancelled: { cancel.isCancelled },
                                                      progress: { done, total in
                 DispatchQueue.main.async {
                     self?.setProgress(done: done, total: total)
@@ -371,7 +373,8 @@ final class EntryPointsWindowController: NSWindowController, NSOutlineViewDataSo
         }
         diagramCaption.stringValue = "Tracing “\(variable)” from \(site.fileURL.lastPathComponent):\(site.line)…"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = tracer.trace(variableName: variable, in: site.fileURL, charIndex: site.charIndex)
+            let result = tracer.trace(variableName: variable, in: site.fileURL, charIndex: site.charIndex,
+                                      isCancelled: { false })
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.displayTrace(result: result, site: site, variable: variable)

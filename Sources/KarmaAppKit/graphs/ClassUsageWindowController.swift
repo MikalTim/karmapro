@@ -37,7 +37,7 @@ final class ClassUsageWindowController: NSWindowController {
     /// Scans the project under `root` for `new <className>(` occurrences and renders
     /// them as an animated graph.
     func load(root: URL) {
-        occurrences = ClassUsageScanner.scanInstantiations(of: requestedClass, in: root)
+        occurrences = ClassUsageScanner.scanInstantiations(of: requestedClass, in: root, isCancelled: { false })
         nodeToOccurrence.removeAll()
 
         if occurrences.isEmpty {

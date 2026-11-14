@@ -176,6 +176,8 @@ public final class EntryPointsService {
     // MARK: - State (guarded by `lock`)
 
     private let lock = NSLock()
+    /// The cached tracer owns scratch buffers, so two superseding traces must not use it concurrently.
+    private let traceLock = NSLock()
     private var primaryGroups: [EntryGroup] = []
     private var indirectGroups: [EntryGroup] = []
     private var indirectCollected = false
@@ -214,31 +216,37 @@ public final class EntryPointsService {
         generation += 1
         let gen = generation
         cancellation?.cancel()
-        let token = VariableFlowCancellation()
-        cancellation = token
+        let requestToken = VariableFlowCancellation()
+        cancellation = requestToken
         busyMessage = "Finding entry points…"
         progressDone = 0
         progressTotal = 0
-        let jobID = KarmaJobCenter.shared.start(kind: "entry-points") { _ in
+        // Starting a job posts an event synchronously; do not call subscribers while holding our state lock.
+        lock.unlock()
+        let jobID = KarmaJobCenter.shared.start(kind: "entry-points") { context in
+            let token = self.jobCancellation(context: context, requestToken: requestToken, generation: gen)
+            defer { self.finishBusy(generation: gen) }
+            guard !token.isCancelled else { return nil }
             let index = self.sourceIndex(for: root, token: token, generation: gen)
-            guard let index = index, !token.isCancelled, !index.wasCancelled else {
-                self.finishBusy(generation: gen)
-                return KarmaJSON.data(self.state())
-            }
+            guard let index = index, !token.isCancelled, !index.wasCancelled else { return nil }
             self.setBusyMessage("Finding entry points…", generation: gen)
-            let groups = EntryPointCollector.collect(sourceIndex: index, includeIndirect: false) { done, total in
+            let groups = EntryPointCollector.collect(sourceIndex: index, includeIndirect: false,
+                                                      isCancelled: { token.isCancelled }) { done, total in
+                context.progress(done: done, total: total, stage: "Finding entry points…")
                 self.setProgress(done: done, total: total, generation: gen)
             }
             let truncatedNow = EntryPointCollector.truncationWarning
+            guard !token.isCancelled else { return nil }
+            let tracer = VariableFlowTracer(sourceIndex: index)
             self.lock.lock()
-            if gen == self.generation {
+            if gen == self.generation && !token.isCancelled {
                 self.primaryGroups = groups
                 self.indirectGroups = []
                 self.indirectCollected = false
                 self.showIndirect = false
                 self.truncated = truncatedNow
                 self.activeIndex = index
-                self.activeTracer = VariableFlowTracer(sourceIndex: index)
+                self.activeTracer = tracer
                 self.rebuildSites()
                 self.busyMessage = nil
                 self.cancellation = nil
@@ -246,7 +254,6 @@ public final class EntryPointsService {
             self.lock.unlock()
             return KarmaJSON.data(self.state())
         }
-        lock.unlock()
         return jobID
     }
 
@@ -259,28 +266,31 @@ public final class EntryPointsService {
         let needsCollection = on && !indirectCollected && activeIndex != nil
         generation += 1
         let gen = generation
+        cancellation?.cancel()
+        let requestToken = VariableFlowCancellation()
+        cancellation = requestToken
         if needsCollection {
-            cancellation?.cancel()
-        }
-        let token = VariableFlowCancellation()
-        if needsCollection {
-            cancellation = token
             busyMessage = "Finding indirect entries…"
             progressDone = 0
             progressTotal = 0
+        } else {
+            busyMessage = nil
         }
-        let jobID = KarmaJobCenter.shared.start(kind: "entry-points-indirect") { _ in
+        lock.unlock()
+        let jobID = KarmaJobCenter.shared.start(kind: "entry-points-indirect") { context in
+            let token = self.jobCancellation(context: context, requestToken: requestToken, generation: gen)
+            defer { self.finishBusy(generation: gen) }
+            guard !token.isCancelled else { return nil }
             guard needsCollection else { return KarmaJSON.data(self.state()) }
             let index = self.sourceIndex(for: root, token: token, generation: gen)
-            guard let index = index, !token.isCancelled, !index.wasCancelled else {
-                self.finishBusy(generation: gen)
-                return KarmaJSON.data(self.state())
-            }
-            let groups = EntryPointCollector.collect(sourceIndex: index, includeIndirect: true) { done, total in
+            guard let index = index, !token.isCancelled, !index.wasCancelled else { return nil }
+            let groups = EntryPointCollector.collect(sourceIndex: index, includeIndirect: true,
+                                                      isCancelled: { token.isCancelled }) { done, total in
+                context.progress(done: done, total: total, stage: "Finding indirect entries…")
                 self.setProgress(done: done, total: total, generation: gen)
             }
             self.lock.lock()
-            if gen == self.generation {
+            if gen == self.generation && !token.isCancelled {
                 self.indirectGroups = groups.filter { $0.confidence == .indirect }
                 self.indirectCollected = true
                 self.busyMessage = nil
@@ -290,7 +300,6 @@ public final class EntryPointsService {
             self.lock.unlock()
             return KarmaJSON.data(self.state())
         }
-        lock.unlock()
         return jobID
     }
 
@@ -302,27 +311,54 @@ public final class EntryPointsService {
             lock.unlock()
             throw KarmaServiceError.notFound("No entry point with id \(siteID).")
         }
+        generation += 1
+        let gen = generation
+        cancellation?.cancel()
+        let requestToken = VariableFlowCancellation()
+        cancellation = requestToken
         let tracer = activeTracer
         let root = KarmaWorkspace.shared.read { $0.root }
         lock.unlock()
 
-        let jobID = KarmaJobCenter.shared.start(kind: "entry-points-trace") { _ in
+        let jobID = KarmaJobCenter.shared.start(kind: "entry-points-trace") { context in
+            let token = self.jobCancellation(context: context, requestToken: requestToken, generation: gen)
+            defer { self.finishBusy(generation: gen) }
+            self.traceLock.lock()
+            defer { self.traceLock.unlock() }
+            guard !token.isCancelled else { return nil }
             let dto: EntryTraceDTO
             if let variable = site.entryVariable {
-                let engine = tracer ?? Self.fallbackTracer(root: root)
-                dto = self.traceFlow(site: site, siteID: siteID, variable: variable, tracer: engine)
+                let engine = tracer ?? Self.fallbackTracer(root: root, token: token)
+                guard !token.isCancelled else { return nil }
+                dto = self.traceFlow(site: site, siteID: siteID, variable: variable, tracer: engine,
+                                     isCancelled: { token.isCancelled })
             } else {
                 dto = self.inlineTrace(site: site, siteID: siteID)
             }
             self.lock.lock()
-            self.lastTrace = dto
+            if gen == self.generation && !token.isCancelled { self.lastTrace = dto }
             self.lock.unlock()
-            return KarmaJSON.data(dto)
+            return token.isCancelled ? nil : KarmaJSON.data(dto)
         }
         return jobID
     }
 
     // MARK: - Private: jobs
+
+    /// Register with the job before doing any work. Cancellation requested before the
+    /// closure started is already reflected in this token; a newer request also cancels it.
+    private func jobCancellation(context: JobContext, requestToken: VariableFlowCancellation,
+                                 generation gen: Int) -> VariableFlowCancellation {
+        let token = context.cancellationToken()
+        lock.lock()
+        if gen == generation && !requestToken.isCancelled {
+            cancellation = token
+        } else {
+            token.cancel()
+        }
+        lock.unlock()
+        return token
+    }
 
     /// The index the window would use: the workspace's when it is for this folder, else one built now.
     private func sourceIndex(for root: URL, token: VariableFlowCancellation, generation gen: Int) -> ProjectSourceIndex? {
@@ -335,9 +371,9 @@ public final class EntryPointsService {
         }
     }
 
-    private static func fallbackTracer(root: URL?) -> VariableFlowTracer? {
-        guard let root = root else { return nil }
-        return VariableFlowTracer(projectRoot: root)
+    private static func fallbackTracer(root: URL?, token: VariableFlowCancellation) -> VariableFlowTracer? {
+        guard let root = root, !token.isCancelled else { return nil }
+        return VariableFlowTracer(projectRoot: root, cancellation: token)
     }
 
     private func setBusyMessage(_ message: String, generation gen: Int) {
@@ -368,13 +404,15 @@ public final class EntryPointsService {
     // MARK: - Private: tracing
 
     /// Mirrors `EntryPointsWindowController.displayTrace`: names the boxes, adds the origin box and builds the caption.
-    private func traceFlow(site: EntrySite, siteID: String, variable: String, tracer: VariableFlowTracer?) -> EntryTraceDTO {
+    private func traceFlow(site: EntrySite, siteID: String, variable: String, tracer: VariableFlowTracer?,
+                           isCancelled: () -> Bool) -> EntryTraceDTO {
         let originLabel = site.origin == .internet ? "Remote" : "Local"
         guard let tracer = tracer else {
             return EntryTraceDTO(siteID: siteID, caption: "Project index is not ready.", originLabel: originLabel,
                                  nodes: [], edges: [])
         }
-        let result = tracer.trace(variableName: variable, in: site.fileURL, charIndex: site.charIndex)
+        let result = tracer.trace(variableName: variable, in: site.fileURL, charIndex: site.charIndex,
+                                  isCancelled: isCancelled)
         guard !result.nodes.isEmpty else {
             return EntryTraceDTO(siteID: siteID,
                                  caption: "No flow found for “\(variable)” from \(site.fileURL.lastPathComponent):\(site.line).",

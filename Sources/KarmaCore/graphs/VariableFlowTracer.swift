@@ -229,7 +229,8 @@ final class VariableFlowTracer {
 
     /// Traces `variableName` starting at the UTF-16 offset `charIndex` inside
     /// `fileURL` (the position of the right-clicked / highlighted identifier).
-    func trace(variableName: String, in fileURL: URL, charIndex: Int) -> VariableFlowResult {
+    func trace(variableName: String, in fileURL: URL, charIndex: Int,
+               isCancelled: () -> Bool) -> VariableFlowResult {
         let stdURL = fileURL.standardizedFileURL
         var warnings: [String] = []
         guard !variableName.isEmpty else {
@@ -264,6 +265,7 @@ final class VariableFlowTracer {
                                    path: [],
                                    parentID: nil,
                                    parentCallLine: nil,
+                                   isCancelled: isCancelled,
                                    warnings: &warnings) {
             _ = rootID
             return VariableFlowResult(variableName: variableName,
@@ -290,7 +292,9 @@ final class VariableFlowTracer {
                             path: Set<String>,
                             parentID: String?,
                             parentCallLine: Int?,
+                            isCancelled: () -> Bool,
                             warnings: inout [String]) -> String? {
+        guard !isCancelled() else { return nil }
         guard depth <= Self.maxDepth else {
             warningSet.insert("Stopped following calls beyond depth \(Self.maxDepth).")
             return nil
@@ -316,6 +320,7 @@ final class VariableFlowTracer {
         var passes: [Pass] = []
         var i = 0
         while i < bodyTokens.count {
+            guard !isCancelled() else { return nil }
             let tok = bodyTokens[i]
             if tok.kind == .identifier {
                 if tok.text == searchName, !NSLocationInRange(tok.offset, excludeRegion) {
@@ -355,6 +360,7 @@ final class VariableFlowTracer {
         nodesBuffer.append(node)
 
         for pass in passes {
+            guard !isCancelled() else { return nil }
             guard let callee = resolveCallee(named: pass.calleeName, preferred: currentFunc.fileURL) else { continue }
             // A member call into a method with an explicit receiver parameter
             // (`self`/`cls`) omits that receiver at the call site, so the
@@ -372,6 +378,7 @@ final class VariableFlowTracer {
                                         path: myPath,
                                         parentID: id,
                                         parentCallLine: pass.line,
+                                        isCancelled: isCancelled,
                                         warnings: &warnings) {
                 edgesBuffer.append(VariableFlowEdge(from: id, to: childID, callLine: pass.line))
             }
