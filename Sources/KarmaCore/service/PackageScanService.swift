@@ -384,12 +384,16 @@ public enum PackageScanService {
             if let fraction { progress = fraction }
         }
 
-        /// The window's `performDetection` completion: records the files and the status line.
+        /// The window's `performDetection` completion: records the files and the status line. Detection runs when
+        /// the window opens, and a new AppKit window starts without findings or a sort, so those reset here.
         func applyDetection(_ detection: PackageDetection) {
             lock.lock()
             defer { lock.unlock() }
             busy = false
             progress = nil
+            findings = []
+            sortKey = nil
+            sortAscending = true
             applyFiles(detection.files, entries: detection.dependencies.count)
         }
 

@@ -46,6 +46,7 @@ func configure(_ app: Application, token: String?, quit: @escaping @Sendable () 
 
     let api = app.grouped("api")
         .grouped(KarmaErrorMiddleware())
+        .grouped(KarmaDefaultsMiddleware())
         .grouped(KarmaAuthMiddleware(token: token))
     registerAppRoutes(api, tokenRequired: token != nil)
     registerQuitRoute(api, quit: quit)

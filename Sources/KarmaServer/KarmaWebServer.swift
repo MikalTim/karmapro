@@ -36,6 +36,8 @@ public enum KarmaWebServer {
             status = 1
         }
         try? await app.asyncShutdown()
+        // A stop by Ctrl+C or SIGTERM ends `execute()` normally; write what is still in memory.
+        UserDefaults.standard.synchronize()
         return status
     }
 }
