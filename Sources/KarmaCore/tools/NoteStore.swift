@@ -3,21 +3,25 @@ import Foundation
 
 /// Persists small per-line notes keyed by file path + line number to a JSON file
 /// on disk, so notes survive app restarts and reappear for the same source file.
+/// Each operation serialises state access and persistence across desktop and server callers.
 final class NoteStore {
     static let shared = NoteStore()
 
     private var notes: [String: [Int: String]] = [:]
     private let fileURL: URL
+    private let lock = NSLock()
 
-    init() {
-        let dir = FileManager.default
+    init(fileURL: URL? = nil) {
+        self.fileURL = fileURL ?? FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("Karma Pro", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        fileURL = dir.appendingPathComponent("notes.json")
+            .appendingPathComponent("notes.json")
+        try? FileManager.default.createDirectory(at: self.fileURL.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
         load()
     }
 
+    /// Called only during initialisation, before the store is shared.
     private func load() {
         guard let data = try? Data(contentsOf: fileURL),
               let raw = try? JSONSerialization.jsonObject(with: data) as? [String: [String: String]]
@@ -33,6 +37,7 @@ final class NoteStore {
         notes = result
     }
 
+    /// The caller holds `lock` through the mutation and its atomic disk write.
     private func save() {
         var raw: [String: [String: String]] = [:]
         for (path, lines) in notes {
@@ -48,12 +53,16 @@ final class NoteStore {
     }
 
     func note(for file: URL, line: Int) -> String? {
-        notes[file.path]?[line]
+        lock.lock()
+        defer { lock.unlock() }
+        return notes[file.path]?[line]
     }
 
     /// Sets the note for a line; an empty string removes it. Returns false if nothing changed.
     @discardableResult
     func setNote(for file: URL, line: Int, text: String?) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
         let trimmed = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if notes[file.path] == nil { notes[file.path] = [:] }
         if trimmed.isEmpty {
@@ -70,6 +79,8 @@ final class NoteStore {
     }
 
     func lineNumbers(for file: URL) -> Set<Int> {
+        lock.lock()
+        defer { lock.unlock() }
         if let lines = notes[file.path] {
             return Set(lines.keys)
         }
@@ -85,6 +96,8 @@ final class NoteStore {
 
     /// Returns every note in the store, oldest-to-newest by path then line.
     func allNotes() -> [StoredNote] {
+        lock.lock()
+        defer { lock.unlock() }
         var result: [StoredNote] = []
         for (path, lines) in notes {
             for (line, text) in lines {
@@ -116,6 +129,8 @@ final class NoteStore {
     /// legacy absolute keys are written unchanged.
     @discardableResult
     func export(to url: URL, projectRoot: URL? = nil) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
         let root = projectRoot?.standardizedFileURL.path
         var raw: [String: [String: String]] = [:]
         for (path, lines) in notes {
@@ -158,6 +173,8 @@ final class NoteStore {
     /// re-rooted against it, so a portable export imports to the recipient's copy of
     /// the project. Absolute keys (legacy exports) are left untouched.
     func importFrom(data: Data, projectRoot: URL? = nil) -> (count: Int, error: String) {
+        lock.lock()
+        defer { lock.unlock() }
         guard let root = projectRoot?.standardizedFileURL.path else {
             return importFromDataAbsolute(raw: data)
         }
@@ -200,6 +217,7 @@ final class NoteStore {
     }
 
     /// Back-compat: merge an exchange file using keys exactly as written (absolute).
+    /// Called only by `importFrom(data:projectRoot:)` while holding `lock`.
     private func importFromDataAbsolute(raw data: Data) -> (count: Int, error: String) {
         guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: [String: String]] else {
             return (0, "Not a valid Karma Pro notes file.")

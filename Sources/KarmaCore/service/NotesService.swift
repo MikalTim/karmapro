@@ -59,9 +59,6 @@ public enum NotesService {
         }
     }
 
-    /// Serialises access to `NoteStore.shared`, which is not thread-safe.
-    private static let lock = NSLock()
-
     // MARK: - Public API
 
     /// `GET /api/notes`: the notes of the open project, or every note when no project is open.
@@ -94,9 +91,7 @@ public enum NotesService {
     // MARK: - Internals
 
     static func list(store: NoteStore, root: URL?) -> ListDTO {
-        lock.lock()
         let stored = root.map { store.notes(forProject: $0) } ?? store.allNotes()
-        lock.unlock()
         let rootPath = root?.standardizedFileURL.path
         let notes = stored.map { note in
             NoteDTO(path: note.path,
@@ -120,9 +115,7 @@ public enum NotesService {
         let temporary = FileManager.default.temporaryDirectory
             .appendingPathComponent("karma-notes-\(UUID().uuidString).codenotes")
         defer { try? FileManager.default.removeItem(at: temporary) }
-        lock.lock()
         let written = store.export(to: temporary, projectRoot: root)
-        lock.unlock()
         guard written else {
             throw KarmaServiceError.invalid("Could not write the notes file.")
         }
@@ -130,9 +123,7 @@ public enum NotesService {
     }
 
     static func importData(store: NoteStore, root: URL?, data: Data) -> ImportResultDTO {
-        lock.lock()
         let result = store.importFrom(data: data, projectRoot: root)
-        lock.unlock()
         if result.count > 0 {
             KarmaEventBus.shared.post("notes.changed")
         }
