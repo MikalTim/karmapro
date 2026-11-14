@@ -2,7 +2,7 @@
 // flow arrows, note gutter, ML highlights, the function dataflow pane, the right-click menu and the definition popup.
 //
 // Public surface, as the main window uses it:
-//   SourceViewer.svelte, props { onShown?: (path) => void, onFunctionSelected?: (path, functionName) => void }
+//   SourceViewer.svelte, props { onShown?: (path) => void, onFunctionSelected?: (path, functionName, location) => void }
 //     display(path: string, line?: number): Promise<void>  shows a file; `line` is 1-based and is scrolled to
 //     clear(): void                                         forgets the shown file
 //     currentPath(): string | null                          the shown file's path, or null

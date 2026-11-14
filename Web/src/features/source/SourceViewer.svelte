@@ -64,8 +64,8 @@
   }: {
     /** Called after every `display`, whichever caller asked for it. */
     onShown?: (path: string) => void;
-    /** Called when a function name in the code is clicked. */
-    onFunctionSelected?: (path: string, functionName: string) => void;
+    /** Called when a function name in the code is clicked; `location` is the UTF-16 offset clicked, which picks the overload. */
+    onFunctionSelected?: (path: string, functionName: string, location: number) => void;
   } = $props();
 
   /** The part of `CodeView` this viewer calls. */
@@ -273,7 +273,7 @@
     if (path === null) return;
     if (target.kind === "function") {
       void showFunctionDataflow(path, target.name);
-      onFunctionSelected?.(path, target.name);
+      onFunctionSelected?.(path, target.name, target.pos);
     } else if (target.kind === "class") {
       void openClassUsageWindow({ className: target.name });
     } else {

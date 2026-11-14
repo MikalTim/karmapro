@@ -47,6 +47,8 @@
   interface FlowSelection {
     path: string;
     functionName: string;
+    /** The UTF-16 offset clicked in the file: it picks the overload whose chart the panel shows. */
+    location: number;
   }
 
   const isMac = isMacPlatform(navigator);
@@ -97,8 +99,8 @@
     history = recordFile(history, path);
   }
 
-  function viewerFunctionSelected(path: string, functionName: string): void {
-    flowSelection = { path, functionName };
+  function viewerFunctionSelected(path: string, functionName: string, location: number): void {
+    flowSelection = { path, functionName, location };
   }
 
   function navigate(delta: -1 | 1): void {
@@ -352,7 +354,11 @@
       onpointerdown={(event) => dragDivider("flow", event)}
     ></div>
     <div class="flow-pane" style:width="{flowWidth}px">
-      <FlowPanel path={flowSelection?.path ?? null} functionName={flowSelection?.functionName ?? null} />
+      <FlowPanel
+        path={flowSelection?.path ?? null}
+        functionName={flowSelection?.functionName ?? null}
+        location={flowSelection?.location ?? null}
+      />
     </div>
   </div>
 </div>

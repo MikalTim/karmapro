@@ -85,6 +85,14 @@
 
   const edges: Edge[] = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
   const active = $derived(windowStore.top === win.z);
+
+  let frame: HTMLDivElement | undefined = $state();
+
+  // `makeKeyAndOrderFront`: a window that opens or comes to the front gets the keyboard, unless its content already
+  // took it (a field with autofocus). Without this the toolbar button that opened it would keep the focus.
+  $effect(() => {
+    if (active && frame && !frame.contains(document.activeElement)) frame.focus();
+  });
 </script>
 
 <svelte:window onkeydown={keydown} />
@@ -95,6 +103,7 @@
   role="dialog"
   aria-label={win.title}
   tabindex="-1"
+  bind:this={frame}
   style="left:{win.x}px; top:{win.y}px; width:{win.width}px; height:{win.height}px; z-index:{100 + win.z};"
   onpointerdown={() => focusWindow(win.id)}
 >
@@ -121,6 +130,7 @@
     border-radius: 10px;
     box-shadow: var(--shadow);
     overflow: hidden;
+    outline: none;
   }
   .window:not(.active) .title {
     color: var(--secondary-label);

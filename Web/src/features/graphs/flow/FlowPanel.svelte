@@ -6,21 +6,28 @@
   import FlowChart from "./FlowChart.svelte";
   import type { FlowDTO } from "./flowModel";
 
-  let { path, functionName }: { path: string | null; functionName: string | null } = $props();
+  let {
+    path,
+    functionName,
+    location = null,
+  }: { path: string | null; functionName: string | null; location?: number | null } = $props();
 
   let flow = $state.raw<FlowDTO | null>(null);
   let failure = $state<string | null>(null);
   let chartView = $state<ReturnType<typeof FlowChart>>();
 
-  // Each function change asks for its flowchart; an answer for an earlier function is ignored.
+  // Each function change asks for its flowchart; an answer for an earlier function is ignored. The clicked
+  // offset lets the server analyse the overload that was clicked, as AppKit passes the clicked definition.
   $effect(() => {
     const target = path;
     const name = functionName;
+    const clicked = location;
     flow = null;
     failure = null;
     if (target === null || name === null) return;
     let stale = false;
-    api<FlowDTO>("GET", withQuery("/api/flow", { path: target, function: name })).then(
+    const query = { path: target, function: name, location: clicked ?? undefined };
+    api<FlowDTO>("GET", withQuery("/api/flow", query)).then(
       (dto) => {
         if (!stale) flow = dto;
       },
