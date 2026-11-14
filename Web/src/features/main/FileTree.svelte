@@ -4,7 +4,8 @@
   // which every folder starts open, as AppKit expands the tree after loading it.
   import { File, Folder } from "@lucide/svelte";
   import Outline from "../../lib/ui/Outline.svelte";
-  import { openablePath, rowLabel, treeNodes, type FileTreeNode } from "./fileTree";
+  import { nextSelectableFile, openablePath, rowLabel, treeNodes, visibleNodes, type FileTreeNode } from "./fileTree";
+  import MiddleText from "./MiddleText.svelte";
   import { treeState } from "./treeState.svelte";
 
   let { onOpenFile }: { onOpenFile: (path: string) => void } = $props();
@@ -25,20 +26,55 @@
     selectedId = null;
   });
 
-  /** Folders cannot be selected (`shouldSelectItem`), so a click on one leaves the file selection alone. */
+  // A new language filter expands the whole tree again (`applyLanguageFilter` ends in `reloadAndExpand`).
+  $effect(() => {
+    void treeState.language;
+    expanded = {};
+  });
+
+  /** True while the outline handles a key press, which moves the selection but opens nothing. */
+  let keyboardMove = false;
+
+  /**
+   * Folders cannot be selected (`shouldSelectItem`): a click on one leaves the file selection alone
+   * and an arrow key moves on to the next file. Only a click opens a file (`outlineClicked`); the
+   * arrow keys just move the selection.
+   */
   function select(node: FileTreeNode | null): void {
-    const path = node ? openablePath(node.data) : null;
+    let target = node;
+    if (node !== null && openablePath(node.data) === null && keyboardMove) {
+      target = nextSelectableFile(visibleNodes(nodes, expanded), selectedFile, node);
+    }
+    const path = target ? openablePath(target.data) : null;
     if (path === null) {
       selectedId = selectedFile;
       return;
     }
     selectedFile = path;
     selectedId = path;
-    onOpenFile(path);
+    if (!keyboardMove) onOpenFile(path);
+  }
+
+  /** A double click expands a folder and does nothing to an open one (`outlineDoubleClicked`). */
+  function doubleClick(event: MouseEvent): void {
+    event.stopPropagation();
+    if (!(event.target instanceof Element)) return;
+    const row = event.target.closest('[role="treeitem"]');
+    if (row === null || row.parentElement === null) return;
+    const rows = Array.from(row.parentElement.querySelectorAll('[role="treeitem"]'));
+    const node = visibleNodes(nodes, expanded)[rows.indexOf(row)];
+    if (node?.children && node.children.length > 0) expanded[node.id] = true;
   }
 </script>
 
-<div class="tree">
+<!-- The capture handlers wrap the outline's own handlers: they mark key presses and take the double click over. -->
+<div
+  class="tree"
+  role="presentation"
+  onkeydowncapture={() => (keyboardMove = true)}
+  onkeydown={() => (keyboardMove = false)}
+  ondblclickcapture={doubleClick}
+>
   {#if treeState.error}<p class="message">{treeState.error}</p>{/if}
   <Outline nodes={nodes} expandAll bind:expanded bind:selectedId onSelect={select} label={labelRow} />
 </div>
@@ -46,7 +82,9 @@
 {#snippet labelRow(node: FileTreeNode)}
   {@const row = rowLabel(node.data)}
   <span class="icon">{#if node.data.isDirectory}<Folder size={14} />{:else}<File size={14} />{/if}</span>
-  <span class="name" class:added={row.tone === "added"} class:modified={row.tone === "modified"}>{row.text}</span>
+  <span class="name" class:added={row.tone === "added"} class:modified={row.tone === "modified"}>
+    <MiddleText text={row.text} />
+  </span>
 {/snippet}
 
 <style>
@@ -73,11 +111,11 @@
     flex: none;
   }
   .name {
-    color: var(--label);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    display: flex;
+    flex: 1;
     min-width: 0;
+    margin: 0 4px 0 4px;
+    color: var(--label);
   }
   .name.added {
     color: var(--system-green);
@@ -88,5 +126,9 @@
   .tree :global(.outline) {
     flex: 1;
     min-height: 0;
+  }
+  /* The column follows the pane's width and long names are cut in the middle, so a row never grows past the pane. */
+  .tree :global(.row) {
+    min-width: 0;
   }
 </style>

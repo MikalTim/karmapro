@@ -26,7 +26,8 @@
   let heldOpen = false;
 
   function pressStart(event: PointerEvent): void {
-    if (event.button !== 0) return;
+    // A disabled button takes no mouse events, so holding it opens nothing.
+    if (!enabled || event.button !== 0) return;
     heldOpen = false;
     clearTimeout(holdTimer);
     holdTimer = setTimeout(() => {

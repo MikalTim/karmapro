@@ -330,7 +330,8 @@
     findInFile={findInFile}
   />
   <PRBanner />
-  <div class="panes" bind:clientWidth={panesWidth}>
+  <!-- data-main-panes: a key typed in the tree, viewer or flow panel belongs to the main window, not to a floating one. -->
+  <div class="panes" data-main-panes bind:clientWidth={panesWidth}>
     <div class="tree-pane" hidden={!treeVisible} style:width="{treeWidth}px">
       <FileTree onOpenFile={(path) => showFile(path)} />
     </div>

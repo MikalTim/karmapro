@@ -91,7 +91,9 @@
   <ToolbarButton label="Toggle Sidebar" tooltip="Show or hide the file sidebar" onClick={() => toggleSidebar()}>
     {#snippet icon()}<PanelLeft size={16} />{/snippet}
   </ToolbarButton>
-  <PopUp items={languageItems} value={treeState.language} width={200} title="Language" onChange={setLanguage} />
+  <span class="language" role="group" aria-label="Language">
+    <PopUp items={languageItems} value={treeState.language} width={200} onChange={setLanguage} />
+  </span>
   <ToolbarButton label="Find in File" tooltip="Find text within the current file" onClick={() => findInFile()}>
     {#snippet icon()}<TextSearch size={16} />{/snippet}
   </ToolbarButton>
@@ -129,6 +131,9 @@
   .history-group {
     display: flex;
     gap: 2px;
+  }
+  .language {
+    display: inline-flex;
   }
   .spacer {
     flex: 1;

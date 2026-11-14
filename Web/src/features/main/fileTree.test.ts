@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { openablePath, rowLabel, treeNodes } from "./fileTree";
+import { nextSelectableFile, openablePath, rowLabel, treeNodes, visibleNodes } from "./fileTree";
 import type { FileNodeDTO, ProjectTreeDTO } from "./project";
 
 const app: FileNodeDTO = {
@@ -76,5 +76,56 @@ describe("openablePath", () => {
   it("opens a file and never a folder", () => {
     expect(openablePath({ name: "util.c", path: "/x/util.c", isDirectory: false, badge: null })).toBe("/x/util.c");
     expect(openablePath({ name: "src", path: "/x/src", isDirectory: true, badge: null })).toBeNull();
+  });
+});
+
+describe("visibleNodes", () => {
+  const [top] = treeNodes({ root: app });
+
+  it("lists every row while all folders are open, which is how a loaded tree starts", () => {
+    expect(visibleNodes([top], {}).map((node) => node.data.name)).toEqual([
+      "app",
+      "src",
+      "Main.java",
+      "README.md",
+      "util.c",
+    ]);
+  });
+
+  it("leaves out the children of a folder recorded as closed", () => {
+    expect(visibleNodes([top], { "/work/app/src": false }).map((node) => node.data.name)).toEqual([
+      "app",
+      "src",
+      "README.md",
+      "util.c",
+    ]);
+  });
+});
+
+describe("nextSelectableFile", () => {
+  // Rows: app, a.c, dir, b.c, c.c
+  const mixed: FileNodeDTO = {
+    name: "app",
+    path: "/w",
+    isDirectory: true,
+    children: [
+      { name: "a.c", path: "/w/a.c", isDirectory: false },
+      { name: "dir", path: "/w/dir", isDirectory: true, children: [{ name: "b.c", path: "/w/dir/b.c", isDirectory: false }] },
+      { name: "c.c", path: "/w/c.c", isDirectory: false },
+    ],
+  };
+  const rows = visibleNodes(treeNodes({ root: mixed }), {});
+
+  it("moves on to the next file when the arrow key goes down onto a folder", () => {
+    expect(nextSelectableFile(rows, "/w/a.c", rows[2])?.data.name).toBe("b.c");
+    expect(nextSelectableFile(rows, null, rows[0])?.data.name).toBe("a.c");
+  });
+
+  it("moves to the previous file when the arrow key goes up onto a folder", () => {
+    expect(nextSelectableFile(rows, "/w/dir/b.c", rows[2])?.data.name).toBe("a.c");
+  });
+
+  it("returns null when no file lies beyond the folder", () => {
+    expect(nextSelectableFile(rows, "/w/a.c", rows[0])).toBeNull();
   });
 });

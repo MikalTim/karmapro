@@ -95,7 +95,8 @@
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    z-index: 100000;
+    /* Above the folder picker (100500): an alert that arrives while the picker is open must stay reachable. */
+    z-index: 101000;
   }
   .alert {
     margin-top: 12vh;

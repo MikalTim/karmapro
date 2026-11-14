@@ -26,7 +26,8 @@ export interface EditorCallbacks {
   onTarget(target: ClickTarget): void;
   /** A line number in the gutter was clicked (1-based). */
   onLineClick(line: number): void;
-  onEscape(): void;
+  /** Escape was pressed in the text; answers whether the viewer used it. */
+  onEscape(): boolean;
   /** Right-click: the offset under the pointer and the current selection. */
   onContextMenu(info: { pos: number | null; from: number; to: number }, event: MouseEvent): void;
   /** The text or its layout changed (lines moved or re-wrapped); overlays drawn over the text must be redrawn. */
@@ -171,8 +172,9 @@ export function createCodeEditor(parent: HTMLElement, source: string, callbacks:
         },
         keydown(event) {
           if (event.key !== "Escape") return false;
-          callbacks.onEscape();
-          return true;
+          // Only an Escape the viewer used (leaving focus mode) is consumed; any other reaches the window, which
+          // closes on it (the definition window).
+          return callbacks.onEscape();
         },
         contextmenu(event, view) {
           const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });

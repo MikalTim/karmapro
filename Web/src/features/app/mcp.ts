@@ -39,3 +39,28 @@ export function statsText(state: Pick<MCPStateDTO, "scanCount" | "startedAt">, n
   const minutes = Math.trunc((now.getTime() - started) / 60000);
   return `${base} · up ${minutes} min`;
 }
+
+export const ELLIPSIS = "…";
+
+/**
+ * `NSLineBreakMode.byTruncatingMiddle` on one line: when `text` is wider than `available` px, the middle gives way to
+ * an ellipsis and as many characters as fit stay at both ends (the head keeps the extra one when the count is odd).
+ * `measure` returns the width in px of a string in the field's font.
+ */
+export function truncateMiddle(text: string, available: number, measure: (text: string) => number): string {
+  if (measure(text) <= available) return text;
+  const characters = Array.from(text);
+  const joined = (kept: number): string => {
+    const head = Math.ceil(kept / 2);
+    return characters.slice(0, head).join("") + ELLIPSIS + characters.slice(characters.length - (kept - head)).join("");
+  };
+  // The widest string that fits: the width grows with every kept character, so a binary search finds it.
+  let low = 0;
+  let high = characters.length - 1;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (measure(joined(middle)) <= available) low = middle;
+    else high = middle - 1;
+  }
+  return joined(low);
+}

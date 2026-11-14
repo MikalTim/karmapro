@@ -49,3 +49,33 @@ export function rowLabel(row: FileRow): RowLabel {
 export function openablePath(row: FileRow): string | null {
   return row.isDirectory ? null : row.path;
 }
+
+/**
+ * The rows the outline shows, top to bottom: a folder's children follow it while it is
+ * open. A folder with no recorded state is open, as AppKit expands the whole tree.
+ */
+export function visibleNodes(nodes: FileTreeNode[], expanded: Record<string, boolean>): FileTreeNode[] {
+  const rows: FileTreeNode[] = [];
+  const walk = (list: FileTreeNode[]) => {
+    for (const node of list) {
+      rows.push(node);
+      if (node.children && node.children.length > 0 && (expanded[node.id] ?? true)) walk(node.children);
+    }
+  };
+  walk(nodes);
+  return rows;
+}
+
+/**
+ * The file the keyboard selection lands on when an arrow key moves onto `over`, a row that
+ * cannot be selected: the next file in the direction of travel, or null at the end of the list.
+ * `selected` is the file selected before the key press (null for none, which counts as moving down).
+ */
+export function nextSelectableFile(rows: FileTreeNode[], selected: string | null, over: FileTreeNode): FileTreeNode | null {
+  const target = rows.findIndex((row) => row.id === over.id);
+  const step = selected !== null && rows.findIndex((row) => row.id === selected) > target ? -1 : 1;
+  for (let index = target + step; index >= 0 && index < rows.length; index += step) {
+    if (openablePath(rows[index].data) !== null) return rows[index];
+  }
+  return null;
+}

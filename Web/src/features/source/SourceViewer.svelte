@@ -110,7 +110,7 @@
   );
   const callers = $derived(focused ? focused.callers : []);
   const callees = $derived(focused ? focused.callees : []);
-  const flowGraph = $derived(flowPane ? flowPane.graph : null);
+  const flowGraph = $derived(flowPane?.graph ?? null);
   const flowTitle = $derived(flowPane ? flowPane.title : "");
 
   let root: HTMLDivElement | undefined;
@@ -223,9 +223,12 @@
     findOpen = false;
   }
 
-  function clearFocus(): void {
+  /** Leaves focus mode; answers whether it was on, so Escape is used up only then. */
+  function clearFocus(): boolean {
+    const wasFocused = focused !== null;
     focusRequest++;
     focused = null;
+    return wasFocused;
   }
 
   async function focusFunction(path: string, name: string): Promise<void> {
@@ -279,8 +282,8 @@
   }
 
   function menuItems(menu: ContextMenuDTO, selected: string, path: string): MenuItem[] {
-    const name = menu.functionName;
-    const variable = menu.variableName;
+    const name = menu.functionName ?? null;
+    const variable = menu.variableName ?? null;
     const actions: Record<ViewerMenuId, () => void> = {
       copy: () => {
         if (selected.length > 0) void navigator.clipboard.writeText(selected);

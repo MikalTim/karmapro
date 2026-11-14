@@ -40,7 +40,7 @@
     showFlowArrows?: boolean;
     onTarget?: (target: ClickTarget) => void;
     onLineClick?: (line: number) => void;
-    onEscape?: () => void;
+    onEscape?: () => boolean;
     onContextMenu?: (info: { pos: number | null; from: number; to: number }, event: MouseEvent) => void;
   } = $props();
 
@@ -59,7 +59,7 @@
     const created = createCodeEditor(host, untrack(() => source), {
       onTarget: (target) => onTarget?.(target),
       onLineClick: (line) => onLineClick?.(line),
-      onEscape: () => onEscape?.(),
+      onEscape: () => onEscape?.() ?? false,
       onContextMenu: (info, event) => onContextMenu?.(info, event),
       onLayout: scheduleOverlay,
     });

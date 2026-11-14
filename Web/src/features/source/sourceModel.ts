@@ -111,7 +111,7 @@ export function viewerMenuEntries(menu: ContextMenuDTO, mac: boolean): ViewerMen
   const separator = (): void => {
     entries.push({ kind: "separator" });
   };
-  const name = menu.functionName;
+  const name = menu.functionName ?? null;
 
   entries.push(menuItem("copy", "Copy", { disabled: !menu.copyEnabled, shortcut: mac ? "⌘C" : "Ctrl+C" }));
   separator();
@@ -132,9 +132,10 @@ export function viewerMenuEntries(menu: ContextMenuDTO, mac: boolean): ViewerMen
     entries.push(menuItem("simulate", `Simulate '${name}' in the Debugger`));
     entries.push(menuItem("reachability", `Show reachability of '${name}'`));
   }
-  if (menu.variableName !== null) {
+  const variable = menu.variableName ?? null;
+  if (variable !== null) {
     separator();
-    entries.push(menuItem("followVariable", `Follow the variable '${menu.variableName}'`));
+    entries.push(menuItem("followVariable", `Follow the variable '${variable}'`));
   }
   separator();
   entries.push(menuItem("backtrace", "Backtrace Analyser…"));

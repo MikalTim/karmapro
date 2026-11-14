@@ -63,9 +63,11 @@ export interface ContextMenuDTO {
   flowArrowsTitle: string;
   flowArrowsOn: boolean;
   exitFocusAvailable: boolean;
-  functionName: string | null;
+  /** Absent when the pointer is not on a clickable function name: the server leaves nil optionals out. */
+  functionName?: string;
   flowDiagramSupported: boolean;
-  variableName: string | null;
+  /** Absent when no identifier is under the pointer or in the selection. */
+  variableName?: string;
   variableFlowLocation: number;
   lineNumber: number;
   lineText: string;
@@ -86,8 +88,10 @@ export interface DataFlowDTO {
   windowTitle: string;
   title: string;
   caption: string;
-  emptyMessage: string | null;
-  graph: DiagramGraph | null;
+  /** Absent when the pane draws a diagram; an empty string when there is nothing to draw. */
+  emptyMessage?: string;
+  /** Absent when there is nothing to draw (the pane is hidden). */
+  graph?: DiagramGraph;
 }
 
 /** `{"text": …}` as `/api/file/type` and the notes route answer it. */

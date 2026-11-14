@@ -3,15 +3,17 @@
   // new state; `mcp.changed` keeps every open copy in step.
   import { api } from "../../lib/api";
   import { on } from "../../lib/events";
-  import { showAlert } from "../../lib/ui/alert.svelte";
+  import { measureText } from "../../lib/diagram/measure";
+  import { alertQueue, showAlert } from "../../lib/ui/alert.svelte";
   import Checkbox from "../../lib/ui/Checkbox.svelte";
-  import { serviceButtonTitle, statsText, statusText, type MCPStateDTO } from "./mcp";
+  import { serviceButtonTitle, statsText, statusText, truncateMiddle, type MCPStateDTO } from "./mcp";
 
   let { windowId }: { windowId: number } = $props();
 
-  // NSLineBreakMode.byTruncatingMiddle: the head of the URL gives way to an ellipsis and the
-  // token-bearing tail stays visible.
-  const URL_TAIL_LENGTH = 14;
+  // The URL field is one line of monospaced 11 px text with `NSLineBreakMode.byTruncatingMiddle`: the text is measured
+  // in the font the field is drawn in and the middle is cut to fit the field's width.
+  let urlField: HTMLElement | undefined = $state();
+  let urlWidth = $state(0);
 
   const EMPTY_STATE: MCPStateDTO = {
     running: false,
@@ -27,9 +29,13 @@
 
   let view = $state<MCPStateDTO>(EMPTY_STATE);
   let failure = $state("");
+  let root: HTMLElement | undefined = $state();
   const errorMessage = $derived(failure || view.lastError);
-  const urlHead = $derived(view.url.slice(0, Math.max(0, view.url.length - URL_TAIL_LENGTH)));
-  const urlTail = $derived(view.url.slice(-URL_TAIL_LENGTH));
+  const shownUrl = $derived.by(() => {
+    if (!urlField || urlWidth === 0) return view.url;
+    const font = getComputedStyle(urlField).font;
+    return truncateMiddle(view.url, urlWidth, (text) => measureText(text, font));
+  });
   const stats = $derived(statsText(view, new Date()));
 
   $effect(() => {
@@ -55,6 +61,21 @@
     }
   }
 
+  /**
+   * The default button (`startStopButton.keyEquivalent = "\r"`). Enter starts or stops the service only while focus is
+   * inside this window and no alert is waiting, so Enter typed in another window never touches the service.
+   */
+  function enterPressed(event: KeyboardEvent): void {
+    if (event.key !== "Enter" || !root?.contains(document.activeElement) || alertQueue.list.length > 0) return;
+    event.preventDefault();
+    void perform(api<MCPStateDTO>("POST", "/api/mcp/toggle"));
+  }
+
+  // The window is key when it opens, as in AppKit, so Enter reaches the default button at once.
+  $effect(() => {
+    root?.focus();
+  });
+
   function copy(text: string): void {
     navigator.clipboard.writeText(text).catch(reportFailure);
   }
@@ -70,7 +91,8 @@
   }
 </script>
 
-<div class="settings">
+<svelte:window onkeydown={enterPressed} />
+<div class="settings" bind:this={root} tabindex="-1">
   <div class="title">MCP Service</div>
   <p class="intro">
     Connects Karma Pro's scanner to an MCP client, which can request a vulnerability scan of a directory and read the
@@ -81,9 +103,7 @@
     <span class="dot" class:running={view.running}></span>
     <span class="status-text">{statusText(view)}</span>
   </div>
-  <div class="url" title={view.url}>
-    <span class="url-head">{urlHead}</span><span class="url-tail">{urlTail}</span>
-  </div>
+  <div class="url" title={view.url} bind:this={urlField} bind:clientWidth={urlWidth}>{shownUrl}</div>
 
   <div class="buttons">
     <button class="button default" onclick={() => void perform(api<MCPStateDTO>("POST", "/api/mcp/toggle"))}>
@@ -135,9 +155,13 @@
     font-size: 12px;
     color: var(--label);
   }
+  .settings:focus {
+    outline: none;
+  }
   .title {
     font-size: 15px;
     font-weight: 600;
+    margin-bottom: -6px;
   }
   .intro,
   .config-hint,
@@ -147,6 +171,10 @@
     margin: 0;
     font-size: 11px;
     line-height: 1.4;
+  }
+  /* `wrappingLabel` sets 12 pt; the hint, statistics, error and footer lines override it with 11 pt. */
+  .intro {
+    font-size: 12px;
   }
   .intro,
   .config-hint,
@@ -158,6 +186,12 @@
   }
   .error {
     color: var(--system-red);
+    /* `errorLabel.maximumNumberOfLines = 2` */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
   .status {
     display: flex;
@@ -175,29 +209,23 @@
     background: var(--system-green);
   }
   .url {
-    display: flex;
     min-width: 0;
     font-family: var(--font-mono);
     font-size: 11px;
     white-space: nowrap;
-    user-select: text;
-  }
-  .url-head {
-    flex: 1 1 auto;
-    min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .url-tail {
-    flex: none;
+    user-select: text;
   }
   .buttons {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+    /* `stack.setCustomSpacing(14, after: buttons)` */
+    margin-bottom: 4px;
   }
   .button {
     font: inherit;
+    font-size: 13px;
     color: var(--label);
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid var(--separator);
@@ -218,6 +246,14 @@
   .config-title {
     font-size: 12px;
     font-weight: 600;
+    /* `stack.setCustomSpacing(6, after: configTitle)` and after `configHint` */
+    margin-bottom: -4px;
+  }
+  .config-hint {
+    margin-bottom: -4px;
+  }
+  .settings :global(.checkbox) {
+    font-size: 13px;
   }
   .config {
     height: 118px;

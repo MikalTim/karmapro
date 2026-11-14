@@ -13,8 +13,14 @@ export function openAboutWindow(): void {
   document.body.append(target);
   const instance = mount(AboutSplash, { target });
   const timer = setTimeout(hideAbout, SHOW_MS);
+  // `EscClosableWindow`: Esc hides the panel before the five seconds are over.
+  const onKeydown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape") hideAbout();
+  };
+  window.addEventListener("keydown", onKeydown);
   hideShown = () => {
     clearTimeout(timer);
+    window.removeEventListener("keydown", onKeydown);
     void unmount(instance);
     target.remove();
   };

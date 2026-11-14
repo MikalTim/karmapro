@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scanCountText, serviceButtonTitle, statsText, statusText } from "./mcp";
+import { scanCountText, serviceButtonTitle, statsText, statusText, truncateMiddle } from "./mcp";
 
 describe("statusText", () => {
   it("names the port while the service runs", () => {
@@ -42,5 +42,29 @@ describe("statsText", () => {
 
   it("ignores an unreadable start time", () => {
     expect(statsText({ scanCount: 0, startedAt: "not a date" }, now)).toBe("0 scans served this session");
+  });
+});
+
+describe("truncateMiddle", () => {
+  // One pixel per character, the ellipsis included.
+  const measure = (text: string): number => Array.from(text).length;
+  const url = "http://127.0.0.1:8765/mcp/19afdde519a548659b1feff4bca50ecc";
+
+  it("returns the text unchanged when it fits", () => {
+    expect(truncateMiddle(url, url.length, measure)).toBe(url);
+    expect(truncateMiddle(url, 500, measure)).toBe(url);
+  });
+
+  it("cuts the middle and keeps both ends within the width", () => {
+    expect(truncateMiddle(url, 21, measure)).toBe("http://127…f4bca50ecc");
+  });
+
+  it("gives the head the extra character when the kept count is odd", () => {
+    expect(truncateMiddle("abcdefghij", 6, measure)).toBe("abc…ij");
+  });
+
+  it("leaves only the ellipsis when nothing else fits", () => {
+    expect(truncateMiddle(url, 1, measure)).toBe("…");
+    expect(truncateMiddle(url, 0, measure)).toBe("…");
   });
 });

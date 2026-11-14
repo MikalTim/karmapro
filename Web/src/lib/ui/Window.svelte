@@ -66,8 +66,18 @@
     target.addEventListener("pointerup", up);
   }
 
+  /**
+   * Escape goes to the window that has the focus. A key typed in the main window's panes belongs to the main
+   * window; everywhere else (the toolbar button that just opened this window, the body) it is for the top window.
+   */
+  function escapeIsForWindows(event: KeyboardEvent): boolean {
+    const target = event.target;
+    return !(target instanceof Element) || target.closest("[data-main-panes]") === null;
+  }
+
   function keydown(event: KeyboardEvent) {
-    if (event.key === "Escape" && win.spec.escCloses && topWindowId() === win.id && !event.defaultPrevented) {
+    const closes = event.key === "Escape" && win.spec.escCloses && topWindowId() === win.id;
+    if (closes && !event.defaultPrevented && escapeIsForWindows(event)) {
       event.stopPropagation();
       void closeWindow(win.id);
     }
