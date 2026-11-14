@@ -33,3 +33,17 @@ jobs:
         run: swift build --product karma --disable-default-traits
       - name: Test
         run: swift test
+      - name: Build the web server and the CLI
+        run: swift build -c release --product karma
+      - name: Web front end
+        working-directory: Web
+        run: |
+          npm ci
+          npm run check
+          npm test
+          npm run build
+      - name: End-to-end tests
+        working-directory: Web
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e
