@@ -116,7 +116,13 @@
                   class="value-input"
                   value={row.value}
                   onchange={(event) => commitParameter(row, event.currentTarget.value)}
-                  onkeydown={(event) => event.stopPropagation()}
+                  onkeydown={(event) => {
+                    event.stopPropagation();
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      event.currentTarget.blur();
+                    }
+                  }}
                 />
               {:else}
                 {row.summary}

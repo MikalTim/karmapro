@@ -317,7 +317,9 @@ export function buildVariableScene(
     items.push({
       shape: "text",
       x: end.x - 26,
-      y: (start.y + end.y) / 2 - 12,
+      // A vertically centred callee covers the native label position when its
+      // frame is painted later. Keep the label above that frame.
+      y: Math.min((start.y + end.y) / 2 - 12, boxRect.y - 12),
       text: "call",
       font: fonts.ui(10, 700),
       fill: "var(--system-blue)",

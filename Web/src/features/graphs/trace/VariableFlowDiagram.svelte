@@ -48,7 +48,7 @@
     /** Set once the user pans or zooms; until then the view is fitted to the window. */
     view: ViewTransform | null;
   }
-  let edits = $state<Edits>({ layout: null, flow: new Map(), boxes: new Map(), view: null });
+  let edits = $state.raw<Edits>({ layout: null, flow: new Map(), boxes: new Map(), view: null });
   const active = $derived<Edits>(edits.layout === layout ? edits : { layout, flow: new Map(), boxes: new Map(), view: null });
 
   const transform = $derived<ViewTransform>(

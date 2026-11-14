@@ -3,7 +3,7 @@
 // and traces the selected entry. A newer request supersedes the older one, as the
 // AppKit window cancels its previous work when a new one starts.
 import { api } from "../../../lib/api";
-import { trackJob, type JobHandle } from "../../../lib/jobs";
+import { runJob, type RunningJob } from "../../../lib/jobs";
 import { showAlert } from "../../../lib/ui/alert.svelte";
 import { tracingCaption, type EntrySite, type EntryPointsState, type EntryTrace } from "./entryPointsModel";
 
@@ -22,10 +22,12 @@ export const entryPoints = $state<{
 
 let searchRun = 0;
 let traceRun = 0;
-let search: JobHandle<EntryPointsState> | null = null;
+let search: RunningJob<EntryPointsState> | null = null;
+let trace: RunningJob<EntryTrace> | null = null;
 
 /** Starts a fresh search, as `EntryPointsWindowController.begin` does on every open. */
 export function beginEntrySearch(): void {
+  closeEntrySearch();
   entryPoints.state = null;
   entryPoints.trace = null;
   entryPoints.tracing = null;
@@ -37,17 +39,23 @@ export function beginEntrySearch(): void {
 /** Turns the indirect tier on or off (`toggleIndirect`). The first switch on collects the tier. */
 export function setIndirectEntries(on: boolean): void {
   const run = ++searchRun;
+  const previous = search;
+  search = null;
+  if (previous) previous.cancel().catch(() => undefined);
   void runSearch(run, api<{ jobId: string }>("POST", "/api/entry-points/indirect", { on }));
 }
 
 /** Traces the flow of the selected entry (`trace(site:)`). Only the newest selection's result is shown. */
 export async function traceEntrySite(site: EntrySite): Promise<void> {
   entryPoints.selectedSiteID = site.id;
+  const previous = trace;
+  if (previous) previous.cancel().catch(() => undefined);
   const run = ++traceRun;
   entryPoints.tracing = site.entryVariable ? tracingCaption(site) : null;
+  const job = runJob<EntryTrace>(api<{ jobId: string }>("POST", "/api/entry-points/trace", { siteID: site.id }));
+  trace = job;
   try {
-    const started = await api<{ jobId: string }>("POST", "/api/entry-points/trace", { siteID: site.id });
-    const outcome = await trackJob<EntryTrace>(started.jobId).promise;
+    const outcome = await job.promise;
     if (run !== traceRun || !outcome.result) return;
     entryPoints.trace = outcome.result;
     entryPoints.tracing = null;
@@ -55,6 +63,8 @@ export async function traceEntrySite(site: EntrySite): Promise<void> {
     if (run !== traceRun) return;
     entryPoints.tracing = null;
     await reportError(error);
+  } finally {
+    if (run === traceRun) trace = null;
   }
 }
 
@@ -62,23 +72,16 @@ export async function traceEntrySite(site: EntrySite): Promise<void> {
 export function closeEntrySearch(): void {
   searchRun++;
   traceRun++;
-  if (search && entryPoints.state?.busy) {
-    // A failed cancel leaves the search to finish on its own; nothing is shown for it.
-    search.cancel().catch(() => undefined);
-  }
+  const searchJob = search;
+  const traceJob = trace;
   search = null;
+  trace = null;
+  if (searchJob) searchJob.cancel().catch(() => undefined);
+  if (traceJob) traceJob.cancel().catch(() => undefined);
 }
 
 async function runSearch(run: number, start: Promise<{ jobId: string }>): Promise<void> {
-  let handle: JobHandle<EntryPointsState>;
-  try {
-    const started = await start;
-    if (run !== searchRun) return;
-    handle = trackJob<EntryPointsState>(started.jobId);
-  } catch (error) {
-    if (run === searchRun) await reportError(error);
-    return;
-  }
+  const handle = runJob<EntryPointsState>(start);
   search = handle;
   const poll = window.setInterval(() => void refresh(run), POLL_MS);
   try {
@@ -91,11 +94,13 @@ async function runSearch(run: number, start: Promise<{ jobId: string }>): Promis
     if (run === searchRun) await reportError(error);
   } finally {
     window.clearInterval(poll);
+    if (run === searchRun) search = null;
   }
 }
 
 /** Reads the state while a search runs. A failed read is retried by the next tick; the job reports real failures. */
 async function refresh(run: number): Promise<void> {
+  if (run !== searchRun) return;
   try {
     const dto = await api<EntryPointsState>("GET", "/api/entry-points");
     if (run === searchRun) applyState(dto);

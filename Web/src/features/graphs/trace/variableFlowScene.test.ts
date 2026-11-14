@@ -75,4 +75,18 @@ describe("buildVariableScene", () => {
     const header = items.find((item) => item.shape === "text" && item.text === "f (x)");
     expect(header).toMatchObject({ font: "700 24px test" });
   });
+
+  it("keeps the blue call label above a callee frame that would cover it", () => {
+    const withCall: VariableLayout = {
+      ...layout,
+      flowNodes: [{ id: 1, kind: "block", label: "f(x)", line: 4, highlighted: true, x: 0, y: 120, width: 80, height: 30 }],
+      callEdges: [{ anchor: 1, box: "b1" }],
+    };
+    const items = buildVariableScene(withCall, state, zoomed, true, fonts, measure);
+    const label = items.find((item) => item.shape === "text" && item.text === "call");
+    expect(label).toMatchObject({ y: 188, font: "700 10px test", fill: "var(--system-blue)" });
+    const moved = buildVariableScene(withCall, { ...state, boxOffsets: new Map([["b1", { x: 10, y: 100 }]]) }, zoomed, true, fonts, measure);
+    const movedLabel = moved.find((item) => item.shape === "text" && item.text === "call");
+    expect(movedLabel).toMatchObject({ y: 338 });
+  });
 });
