@@ -30,7 +30,7 @@
 
 <svelte:window onpointerdowncapture={outside} onblur={() => (openIndex = null)} />
 
-<div class="bar" bind:this={bar}>
+<div class="bar" bind:this={bar} data-app-menu>
   {#each menus as menu, i (menu.title)}
     <div class="slot">
       <button

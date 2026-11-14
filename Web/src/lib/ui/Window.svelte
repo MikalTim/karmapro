@@ -53,10 +53,7 @@
         h = origin.h - dy;
         y = origin.y + dy;
       }
-      resizeWindow(win.id, x, y, w, h);
-      // When the minimum size stopped the resize, keep the opposite edge anchored.
-      if (edge.includes("w")) win.x = origin.x + origin.w - win.width;
-      if (edge.includes("n")) win.y = origin.y + origin.h - win.height;
+      resizeWindow(win.id, x, y, w, h, edge);
     };
     const up = () => {
       target.removeEventListener("pointermove", move);
@@ -95,7 +92,7 @@
   });
 </script>
 
-<svelte:window onkeydown={keydown} />
+<svelte:window onkeydown={keydown} onresize={() => resizeWindow(win.id, win.x, win.y, win.width, win.height)} />
 
 <div
   class="window"

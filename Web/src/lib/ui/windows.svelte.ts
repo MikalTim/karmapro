@@ -53,11 +53,13 @@ const TITLE_BAR = 28;
 const MIN_WIDTH = 300;
 const MIN_HEIGHT = 200;
 
-function viewport(): { width: number; height: number } {
-  return { width: window.innerWidth, height: window.innerHeight };
+function viewport() {
+  const top = document.querySelector("[data-app-menu]")?.getBoundingClientRect().bottom ?? 0;
+  return { left: 0, top, right: window.innerWidth, bottom: window.innerHeight,
+    width: window.innerWidth, height: Math.max(0, window.innerHeight - top) };
 }
 
-/** Opens a window centred on the page at its content size (clamped to the page). Returns its id. */
+/** Opens a window centred below the app menu at its content size, clamped to the usable viewport. */
 export function openWindow(spec: WindowSpec): number {
   if (spec.key) {
     const existing = windowStore.list.find((w) => w.spec.key === spec.key);
@@ -67,12 +69,12 @@ export function openWindow(spec: WindowSpec): number {
     }
   }
   const page = viewport();
-  const width = Math.min(spec.width, page.width - 8);
-  const height = Math.min(spec.height + TITLE_BAR, page.height - 8);
+  const width = Math.min(spec.width, page.width);
+  const height = Math.min(spec.height + TITLE_BAR, page.height);
   // Cascade windows that open at the same spot a little, like AppKit's cascading.
   const offset = (windowStore.list.length % 6) * 24;
-  const x = Math.max(0, Math.round((page.width - width) / 2) + offset - 60);
-  const y = Math.max(0, Math.round((page.height - height) / 2) + offset - 60);
+  const x = Math.max(page.left, Math.min(Math.round((page.width - width) / 2) + offset - 60, page.right - width));
+  const y = Math.max(page.top, Math.min(page.top + Math.round((page.height - height) / 2) + offset - 60, page.bottom - height));
   const state: WindowState = {
     id: nextId++,
     spec,
@@ -122,19 +124,27 @@ export function moveWindow(id: number, x: number, y: number): void {
   const found = windowStore.list.find((w) => w.id === id);
   if (!found) return;
   const page = viewport();
-  found.x = Math.min(Math.max(x, 40 - found.width), page.width - 40);
-  found.y = Math.min(Math.max(y, 0), page.height - TITLE_BAR);
+  found.x = Math.max(page.left, Math.min(x, page.right - found.width));
+  found.y = Math.max(page.top, Math.min(y, page.bottom - found.height));
 }
 
-export function resizeWindow(id: number, x: number, y: number, width: number, height: number): void {
+export function resizeWindow(id: number, x: number, y: number, width: number, height: number, edge = ""): void {
   const found = windowStore.list.find((w) => w.id === id);
   if (!found) return;
-  const minW = Math.max(found.spec.minWidth ?? 0, MIN_WIDTH);
-  const minH = Math.max((found.spec.minHeight ?? 0) + TITLE_BAR, MIN_HEIGHT);
-  found.x = x;
-  found.y = y;
-  found.width = Math.max(width, minW);
-  found.height = Math.max(height, minH);
+  const page = viewport();
+  const minW = Math.min(Math.max(found.spec.minWidth ?? 0, MIN_WIDTH), page.width);
+  const minH = Math.min(Math.max((found.spec.minHeight ?? 0) + TITLE_BAR, MIN_HEIGHT), page.height);
+  const right = Math.max(page.left + minW, Math.min(x + width, page.right));
+  const bottom = Math.max(page.top + minH, Math.min(y + height, page.bottom));
+  const left = Math.max(page.left, Math.min(x, page.right - minW));
+  const top = Math.max(page.top, Math.min(y, page.bottom - minH));
+  const maxW = edge.includes("w") ? right - page.left : edge ? page.right - left : page.width;
+  const maxH = edge.includes("n") ? bottom - page.top : edge ? page.bottom - top : page.height;
+  found.width = Math.max(minW, Math.min(width, maxW));
+  found.height = Math.max(minH, Math.min(height, maxH));
+  found.x = edge.includes("w") ? right - found.width : left;
+  found.y = edge.includes("n") ? bottom - found.height : top;
+  moveWindow(id, found.x, found.y);
 }
 
 export const WINDOW_TITLE_BAR = TITLE_BAR;
