@@ -42,7 +42,6 @@
   let selectedKey = $state<string | null>(null);
   // The progress bar shows only for a scan, as in AppKit; a detection shows the spinner alone.
   let runKind = $state<RunKind | null>(null);
-  let tableWidth = $state(0);
   // AppKit enables Ignore only after a click on a row, and a scan start disables it again.
   let ignoreArmed = $state(false);
   let closed = false;
@@ -52,7 +51,7 @@
   let generation = 0;
 
   const rows = $derived(packageRows(scanState?.findings ?? []));
-  const columns = $derived(packageColumns(tableWidth));
+  const columns = packageColumns(0).map((column) => ({ ...column, wrap: column.id === "msg" }));
   const ignoreEnabled = $derived(scanState !== null && !scanState.busy && ignoreArmed && selectedKey !== null);
 
   function apply(next: PackageScanState) {
@@ -205,13 +204,15 @@
       <div class="progress"><ProgressBar value={scanState.progress} /></div>
     {/if}
 
-    <div class="table-wrap" bind:clientWidth={tableWidth} role="presentation" onclick={openClickedRow}>
+    <div class="table-wrap" role="presentation" onclick={openClickedRow}>
       <Table
         {columns}
         {rows}
         rowKey={(row) => row.id}
         bind:selectedKey
         rowHeight={28}
+        autoHeight
+        lastColumnFills
         sortKey={scanState.sortKey}
         ascending={scanState.sortAscending}
         onSort={sortBy}

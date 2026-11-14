@@ -104,6 +104,7 @@
       {columns}
       rows={pages}
       rowKey={(page) => page.slug}
+      lastColumnFills
       bind:selectedKey
       onDoubleClick={(page) => void openWikiEditorWindow({ slug: page.slug })}
     >

@@ -25,18 +25,19 @@
   let { windowId }: { windowId: number } = $props();
 
   const columns: Column<BugDTO>[] = [
-    { id: "id", title: "ID", width: 150 },
+    { id: "id", title: "ID", width: 150, wrap: false },
     { id: "title", title: "Title", width: 260 },
-    { id: "severity", title: "Severity", width: 90, style: (bug) => `color:${severityColor(bug.severity)}` },
+    { id: "severity", title: "Severity", width: 90, wrap: false, style: (bug) => `color:${severityColor(bug.severity)}` },
     {
       id: "exploitability",
       title: "Exploitability",
       width: 105,
+      wrap: false,
       style: (bug) => `color:${severityColor(bug.exploitability)}`,
     },
     { id: "package", title: "Package", width: 150 },
-    { id: "status", title: "Status", width: 90 },
-    { id: "created", title: "Created", width: 140 },
+    { id: "status", title: "Status", width: 90, wrap: false },
+    { id: "created", title: "Created", width: 140, minWidth: 140, wrap: false },
   ];
 
   let bugs = $state<BugDTO[]>([]);
@@ -119,6 +120,8 @@
       {columns}
       rows={bugs}
       rowKey={(bug) => bug.id}
+      autoHeight
+      lastColumnFills
       bind:selectedKey
       onDoubleClick={(bug) => openEditor(bug.id)}
     >
@@ -177,6 +180,7 @@
     min-height: 120px;
     display: flex;
     flex-direction: column;
+    font-size: 12px;
   }
   .grid :global(.table) {
     flex: 1;

@@ -238,6 +238,7 @@
       columns={repoColumns}
       rows={data?.repos ?? []}
       rowKey={(repo) => repo.id}
+      showHeader={false}
       bind:selectedKey={selectedId}
       onDoubleClick={openRepo}
     >
@@ -361,10 +362,6 @@
     height: 160px;
     display: flex;
     flex-direction: column;
-  }
-  /* AppKit hides the column headers of both tables, so the rows show the columns alone. */
-  .list :global(.header) {
-    display: none;
   }
   .row {
     display: flex;

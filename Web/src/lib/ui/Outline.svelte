@@ -10,6 +10,7 @@
   // NSOutlineView: a tree with disclosure triangles. Which nodes are expanded
   // is remembered per node id, so a reloaded tree keeps its shape.
   import type { Snippet } from "svelte";
+  import { isAlternateRow, stripeBackground } from "./stripes";
 
   let {
     nodes,
@@ -53,6 +54,9 @@
     return out;
   });
 
+  // NSOutlineView with `usesAlternatingRowBackgroundColors`: the empty space under the rows keeps alternating.
+  const filler = $derived(stripeBackground(rowHeight, isAlternateRow(flat.length)));
+
   function toggle(node: TreeNode<Data>) {
     expanded[node.id] = !isOpen(node);
   }
@@ -91,9 +95,10 @@
     }
   }}
 >
-  {#each flat as { node, depth } (node.id)}
+  {#each flat as { node, depth }, index (node.id)}
     <div
       class="row"
+      class:alt={isAlternateRow(index)}
       class:selected={node.id === selectedId}
       style="height:{rowHeight}px; padding-left:{4 + depth * 14}px"
       role="treeitem"
@@ -120,6 +125,7 @@
       {@render label(node)}
     </div>
   {/each}
+  <div class="filler" style="background:{filler}"></div>
 </div>
 
 <style>
@@ -129,12 +135,23 @@
     overflow: auto;
     background: var(--control-bg);
     outline: none;
+    display: flex;
+    flex-direction: column;
+  }
+  .filler {
+    flex: 1 1 0;
+    min-height: 0;
+    pointer-events: none;
   }
   .row {
     display: flex;
+    flex: none;
     align-items: center;
     white-space: nowrap;
     min-width: max-content;
+  }
+  .row.alt {
+    background: var(--row-alt);
   }
   .row.selected {
     background: var(--accent);

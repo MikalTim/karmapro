@@ -67,7 +67,7 @@
 
   onDestroy(() => {
     latest++;
-    void inflight?.cancel().catch(() => undefined);
+    // Closing the native window leaves its search running; ignore its answer here.
   });
 </script>
 
@@ -77,7 +77,7 @@
   </div>
   <div class="status">{statusText}</div>
   <div class="results" bind:clientWidth={tableWidth} role="presentation" onclick={openClickedRow}>
-    <Table {columns} {rows} rowKey={(row) => row.id} rowHeight={20} bind:selectedKey>
+    <Table {columns} {rows} rowKey={(row) => row.id} rowHeight={20} showHeader={false} bind:selectedKey>
       {#snippet cell(row)}
         <span class="match" title={row.match.path}><span class="head">{row.head}</span>{"\t"}{row.body}</span>
       {/snippet}
@@ -109,10 +109,6 @@
     flex-direction: column;
     margin-top: 8px;
     font: 12px var(--font-mono);
-  }
-  /* AppKit's results table has no header row. */
-  .results :global(.header) {
-    display: none;
   }
   .match {
     white-space: pre;

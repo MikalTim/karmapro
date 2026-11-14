@@ -29,6 +29,7 @@
       rows={lines}
       rowKey={(row) => String(row.line)}
       rowHeight={20}
+      autoHeight
       onSelect={(row) => {
         if (row) onSelect(row.line);
       }}
@@ -64,6 +65,8 @@
   .table {
     flex: 1;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
   .mono {
     font: 12px var(--font-mono);

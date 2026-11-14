@@ -19,8 +19,8 @@
   let { windowId }: { windowId: number } = $props();
 
   const columns: Column<NoteDTO>[] = [
-    { id: "file", title: "File", width: 240 },
-    { id: "line", title: "Line", width: 50, align: "right" },
+    { id: "file", title: "File", width: 240, wrap: false },
+    { id: "line", title: "Line", width: 50, align: "right", wrap: false },
     { id: "text", title: "Note", width: 420 },
   ];
 
@@ -83,6 +83,9 @@
       {columns}
       rows={notes}
       rowKey={noteRowKey}
+      autoHeight
+      lastColumnFills
+      rowHeight={28}
       bind:selectedKey
     >
       {#snippet cell(note: NoteDTO, column: Column<NoteDTO>)}
@@ -122,6 +125,7 @@
     display: flex;
     flex-direction: column;
     margin: 0 -16px;
+    font-size: 12px;
   }
   .grid :global(.table) {
     flex: 1;

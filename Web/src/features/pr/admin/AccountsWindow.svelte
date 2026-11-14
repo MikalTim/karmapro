@@ -157,6 +157,7 @@
       columns={accountColumns}
       rows={data?.accounts ?? []}
       rowKey={(account) => account.identity}
+      showHeader={false}
       bind:selectedKey={selectedIdentity}
     />
   </div>
@@ -219,10 +220,6 @@
     height: 140px;
     display: flex;
     flex-direction: column;
-  }
-  /* AppKit hides the column headers of both tables, so the rows show the columns alone. */
-  .list :global(.header) {
-    display: none;
   }
   .row {
     display: flex;
