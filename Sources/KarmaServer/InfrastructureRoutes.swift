@@ -28,14 +28,16 @@ func registerEventRoutes(_ api: RoutesBuilder) {
             keepAlive.cancel()
         }
 
-        let body = Response.Body(asyncStream: { writer in
+        // `managedAsyncStream` ends the response when the closure returns and fails it when a write throws, which
+        // is what happens when the browser closes the connection. The plain `asyncStream` form crashes a debug
+        // build there ("Response body stream writer deinitialized before .end or .error was sent").
+        let body = Response.Body(managedAsyncStream: { writer in
             defer { continuation.finish() }
             // The first chunk opens the stream in the browser before any event happens.
             try await writer.write(.buffer(ByteBuffer(string: ": connected\n\n")))
             for await chunk in stream {
                 try await writer.write(.buffer(ByteBuffer(string: chunk)))
             }
-            try await writer.write(.end)
         })
         return Response(status: .ok, headers: headers, body: body)
     }

@@ -29,9 +29,12 @@ public enum AISettingsService {
         public var tableName: String
         /// The endpoint table's key column: "required" or "none".
         public var tableKey: String
+        /// The saved API key of a user endpoint, for the editor sheet's key field (which AppKit prefills the same
+        /// way). Empty for built-in presets, whose key is edited in the assistant window.
+        public var apiKey: String
 
         public init(id: String, name: String, baseURL: String, requiresAPIKey: Bool, isBuiltin: Bool,
-                    isOllama: Bool, popupTitle: String, tableName: String, tableKey: String) {
+                    isOllama: Bool, popupTitle: String, tableName: String, tableKey: String, apiKey: String) {
             self.id = id
             self.name = name
             self.baseURL = baseURL
@@ -41,6 +44,7 @@ public enum AISettingsService {
             self.popupTitle = popupTitle
             self.tableName = tableName
             self.tableKey = tableKey
+            self.apiKey = apiKey
         }
     }
 
@@ -451,7 +455,8 @@ public enum AISettingsService {
             isOllama: provider.isOllama,
             popupTitle: provider.isBuiltin ? provider.name : provider.name + customMarker,
             tableName: provider.isBuiltin ? provider.name + builtinMarker : provider.name,
-            tableKey: provider.requiresAPIKey ? "required" : "none")
+            tableKey: provider.requiresAPIKey ? "required" : "none",
+            apiKey: provider.isBuiltin ? "" : (UserDefaults.standard.string(forKey: "AI.\(provider.id).apiKey") ?? ""))
     }
 
     private static func promptDTO(_ template: PromptTemplate) -> AIPromptDTO {

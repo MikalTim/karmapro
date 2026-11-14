@@ -4,3 +4,5 @@
 /Karma Pro.app/
 /Web/node_modules/
 /Web/dist/
+/Web/test-results/
+/Web/playwright-report/

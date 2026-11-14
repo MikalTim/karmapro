@@ -12,9 +12,11 @@ public struct MCPStateDTO: Codable, Sendable {
     public var autoStart: Bool
     public var scanCount: Int
     public var lastError: String
+    /// When the listener started (ISO 8601 in JSON); nil while stopped.
+    public var startedAt: Date?
 
     public init(running: Bool, url: String, clientConfig: String, port: Int, allowAI: Bool,
-                autoStart: Bool, scanCount: Int, lastError: String) {
+                autoStart: Bool, scanCount: Int, lastError: String, startedAt: Date? = nil) {
         self.running = running
         self.url = url
         self.clientConfig = clientConfig
@@ -23,6 +25,7 @@ public struct MCPStateDTO: Codable, Sendable {
         self.autoStart = autoStart
         self.scanCount = scanCount
         self.lastError = lastError
+        self.startedAt = startedAt
     }
 }
 
@@ -47,7 +50,8 @@ public enum KarmaMCP {
                            allowAI: service.allowAI,
                            autoStart: service.autoStart,
                            scanCount: service.scanCount,
-                           lastError: service.lastError ?? "")
+                           lastError: service.lastError ?? "",
+                           startedAt: service.startedAt)
     }
 
     /// Reports every state change (start, stop, new scan, token change).
