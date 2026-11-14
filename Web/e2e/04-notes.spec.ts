@@ -15,7 +15,7 @@ test("a note saved from the gutter marks its line and is listed in the Notes win
   await expect(sixth.locator(".karma-note-dot")).toBeVisible();
 
   await page.getByRole("button", { name: "Notes", exact: true }).click();
-  const notes = windowTitled(page, "Notes");
+  const notes = windowTitled(page, "Notes — project");
   await expect(notes).toBeVisible();
   await expect(notes.getByText("check")).toBeVisible();
 });

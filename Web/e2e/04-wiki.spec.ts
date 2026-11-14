@@ -50,9 +50,14 @@ interface WikiPageDTO {
   document: { paragraphs: { runs: WikiRunDTO[] }[] };
 }
 
-test("a second server on the same home still reads Alpha with bold text and the link, which proves the RTF round trip", async ({
+test("a second server on the same home still reads Alpha with bold text and the link, and the MCP token that was rotated", async ({
   request,
 }) => {
+  // A setting written on the first server (the MCP access token lives in UserDefaults, which Linux writes only when
+  // told to) must be on disk for the second one.
+  const rotated = await request.post("/api/mcp/rotate-token", { headers: { "X-Karma-Client": "web" } });
+  expect(rotated.ok()).toBe(true);
+  const rotatedUrl: { url: string } = await rotated.json();
   const port = 8793;
   const home = process.env.KARMA_E2E_HOME ?? "";
   const headers = { "X-Karma-Client": "web" };
@@ -74,6 +79,10 @@ test("a second server on the same home still reads Alpha with bold text and the 
     const runs = page.document.paragraphs.flatMap((paragraph) => paragraph.runs);
     expect(runs.find((run) => run.text.includes("hello"))?.bold).toBe(true);
     expect(runs.some((run) => run.link === "wiki://page/Beta")).toBe(true);
+
+    const mcp = await request.get(`${base}/api/mcp`, { headers });
+    const state: { url: string } = await mcp.json();
+    expect(state.url.split("/").pop()).toBe(rotatedUrl.url.split("/").pop());
   } finally {
     second.kill();
   }

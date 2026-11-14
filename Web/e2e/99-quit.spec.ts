@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,8 +17,7 @@ test("Quit asks for confirmation and then ends the server with status 0", async 
     env: { ...process.env, HOME: home, XDG_DATA_HOME: join(home, ".local/share"), XDG_CONFIG_HOME: join(home, ".config") },
     stdio: "ignore",
   });
-  const exited = Promise.withResolvers<number | null>();
-  server.on("exit", (code) => exited.resolve(code));
+  const exited = once(server, "exit");
 
   try {
     const headers = { "X-Karma-Client": "web" };
@@ -38,7 +38,8 @@ test("Quit asks for confirmation and then ends the server with status 0", async 
 
     await pickMenuItem(page, "Karma Pro", "Quit Karma Pro");
     await alert.getByRole("button", { name: "Quit" }).click();
-    expect(await exited.promise).toBe(0);
+    const [code] = await exited;
+    expect(code).toBe(0);
   } finally {
     server.kill();
   }
