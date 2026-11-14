@@ -13,13 +13,16 @@ func registerGraphRoutes(_ api: RoutesBuilder) {
 
     // MARK: - Flow panel and data flow
 
-    /// `GET /api/flow?path=&function=`: complexity, callees and flowchart of one function.
-    /// Query: `path` (absolute file path), `function`. Response: `FlowService.FlowDTO`.
+    /// `GET /api/flow?path=&function=&location=`: complexity, callees and flowchart of one function.
+    /// Query: `path` (absolute file path), `function`, and optionally `location`, the UTF-16 offset the user clicked:
+    /// the overload whose name contains it is analysed (`FlowPanelViewController.show(definition:)`), else the first
+    /// definition with that name. Response: `FlowService.FlowDTO`.
     /// The service reads any file, so this route needs no open project.
     api.get("flow") { req async throws -> Response in
         let path = try nonEmpty(req.requiredQuery("path"), "path")
         let function = try nonEmpty(req.requiredQuery("function"), "function")
-        let dto = try await req.service { try FlowService.flow(path: path, function: function) }
+        let location = req.query[Int.self, at: "location"]
+        let dto = try await req.service { try FlowService.flow(path: path, function: function, location: location) }
         return jsonResponse(dto)
     }
 

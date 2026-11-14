@@ -430,13 +430,16 @@ public enum FlowService {
     // MARK: - Flow panel
 
     /// `GET /api/flow?path=&function=`: the complexity and flowchart of a function, as the flow panel shows them.
-    /// The first definition with that name is analysed, as the panel does when no clicked overload is passed.
-    public static func flow(path: String, function: String) throws -> FlowDTO {
+    /// The overload whose name range contains `location` is analysed, as the panel does with the definition the user
+    /// clicked; without a match (or without `location`) the first definition with that name is used.
+    public static func flow(path: String, function: String, location: Int? = nil) throws -> FlowDTO {
         let url = URL(fileURLWithPath: path)
         let source = try readText(url)
         let ext = url.pathExtension
         let defs = diagramDefinitions(source: source, ext: ext)
-        guard let def = defs.first(where: { $0.name == function }),
+        let overloads = defs.filter { $0.name == function }
+        let clicked = location.flatMap { at in overloads.first { NSLocationInRange(at, $0.nameRange) } }
+        guard let def = clicked ?? overloads.first,
               let flow = ControlFlowParser.analyze(source: source, ext: ext, functionName: function, definition: def) else {
             return FlowDTO(functionName: function, complexity: nil, lineCount: nil, callees: [], chart: nil)
         }

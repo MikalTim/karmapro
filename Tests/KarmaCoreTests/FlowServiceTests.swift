@@ -126,6 +126,31 @@ final class FlowServiceTests: XCTestCase {
         XCTAssertTrue(flow.callees.isEmpty)
     }
 
+    func testFlowAnalysesTheOverloadAtTheClickedOffset() throws {
+        let source = """
+        int pick(int a) {
+            return a;
+        }
+        int pick(int a, int b) {
+            if (a > b) {
+                return a;
+            }
+            return b;
+        }
+        """
+        let root = try makeProject(["pick.cpp": source])
+        let file = root.appendingPathComponent("pick.cpp").path
+        let second = (source as NSString).range(of: "pick(int a, int b)").location
+
+        let clicked = try FlowService.flow(path: file, function: "pick", location: second + 1)
+        let first = try FlowService.flow(path: file, function: "pick")
+        let outside = try FlowService.flow(path: file, function: "pick", location: source.count - 1)
+
+        XCTAssertEqual(clicked.complexity, 2, "the clicked overload has the if")
+        XCTAssertEqual(first.complexity, 1, "without a location the first overload is used")
+        XCTAssertEqual(outside.complexity, 1, "a location inside no name falls back to the first overload")
+    }
+
     // MARK: - Reachability
 
     func testReachabilityJobReachesTargetFromLocalEntry() throws {
