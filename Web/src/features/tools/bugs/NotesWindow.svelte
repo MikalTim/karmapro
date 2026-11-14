@@ -11,9 +11,11 @@
   import { showFileInMainWindow } from "../../main/navigation";
   import { messageOf } from "./bugModel";
   import { exportNotes, importNotesFile, importNotesFromURL } from "./notesActions";
-  import { noteCellValue, noteRowKey, type NoteDTO, type NotesListDTO } from "./notesModel";
+  import { noteCellValue, noteRowKey, notesWindowTitle, type NoteDTO, type NotesListDTO } from "./notesModel";
+  import { clickedRow } from "../../scan/rowClick";
+  import { setWindowTitle } from "../../../lib/ui/windows.svelte";
 
-  // Windows receive their id; the notes list does not need it itself.
+  // The window id sets the window's own title, which shows the open project's name.
   let { windowId }: { windowId: number } = $props();
 
   const columns: Column<NoteDTO>[] = [
@@ -35,6 +37,7 @@
       if (seq !== requestSeq) return;
       notes = list.notes;
       statusText = list.statusText;
+      setWindowTitle(windowId, notesWindowTitle(list.root));
     } catch (error) {
       if (seq === requestSeq) await showAlert({ message: messageOf(error), buttons: ["OK"] });
     }
@@ -55,6 +58,12 @@
     await reload();
   }
 
+  /** A mouse click on a note opens its file at the note's line, as AppKit's `rowClicked` does. */
+  function openClickedNote(event: MouseEvent) {
+    const note = clickedRow(event, notes, noteRowKey, selectedKey);
+    if (note) showFileInMainWindow(note.path, note.line);
+  }
+
   onMount(() => {
     void reload();
     return on("notes.changed", () => void reload());
@@ -69,15 +78,12 @@
     <button class="btn" disabled={importingURL} onclick={() => void runImportURL()}>Import from URL…</button>
   </div>
 
-  <div class="grid">
+  <div class="grid" role="presentation" onclick={openClickedNote}>
     <Table
       {columns}
       rows={notes}
       rowKey={noteRowKey}
       bind:selectedKey
-      onSelect={(note) => {
-        if (note) showFileInMainWindow(note.path, note.line);
-      }}
     >
       {#snippet cell(note: NoteDTO, column: Column<NoteDTO>)}
         <span

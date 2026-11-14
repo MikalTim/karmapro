@@ -59,7 +59,8 @@ async function trace(request: ReachabilityRequest): Promise<void> {
   reachability.graph = null;
 
   const startedAt = Date.now();
-  const job = runJob<ReachabilityDTO>(api<{ jobId: string }>("POST", "/api/reachability", request), (progress) => {
+  const body = { path: request.path, function: request.functionName };
+  const job = runJob<ReachabilityDTO>(api<{ jobId: string }>("POST", "/api/reachability", body), (progress) => {
     const busy = reachability.busy;
     if (current !== generation || busy === null || busy.kind === "analysing") return;
     if (progress.total > 0 && progress.done >= progress.total) {

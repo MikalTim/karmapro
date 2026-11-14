@@ -194,12 +194,23 @@ describe("password handling", () => {
 });
 
 describe("selection after a reload", () => {
-  it("keeps the selected report while the search still shows it", () => {
-    expect(selectionAfterReload([bug()], bug().id)).toBe(bug().id);
+  const first = bug({ id: "id-a" });
+  const second = bug({ id: "id-b" });
+  const third = bug({ id: "id-c" });
+
+  it("keeps the selected row index, so the report now in that row is selected", () => {
+    expect(selectionAfterReload([first, second, third], [first, third], second.id)).toBe(third.id);
   });
 
-  it("drops the selection when the search no longer shows the report", () => {
-    expect(selectionAfterReload([], bug().id)).toBeNull();
-    expect(selectionAfterReload([bug()], null)).toBeNull();
+  it("selects the report now in the same row after a search", () => {
+    expect(selectionAfterReload([first, second, third], [third, first], second.id)).toBe(first.id);
+  });
+
+  it("selects nothing when the row no longer exists", () => {
+    expect(selectionAfterReload([first, second, third], [first], third.id)).toBeNull();
+  });
+
+  it("selects nothing without a selection", () => {
+    expect(selectionAfterReload([first], [first], null)).toBeNull();
   });
 });

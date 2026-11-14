@@ -7,6 +7,7 @@
   import SearchField from "../../../lib/ui/SearchField.svelte";
   import Table from "../../../lib/ui/Table.svelte";
   import { showFileInMainWindow } from "../../main/navigation";
+  import { clickedRow } from "../rowClick";
   import { errorText } from "./errorText";
   import {
     SEARCH_PLACEHOLDER,
@@ -24,6 +25,7 @@
   let { windowId, language }: { windowId: number; language: string | null } = $props();
 
   let term = $state("");
+  let selectedKey = $state<string | null>(null);
   let statusText = $state(SEARCH_PROMPT_STATUS);
   let matches = $state<SearchMatch[]>([]);
   let tableWidth = $state(0);
@@ -57,6 +59,12 @@
     showFileInMainWindow(row.match.path, row.match.line);
   }
 
+  /** A mouse click on a match opens it, as AppKit's `rowClicked` does. Keyboard moves only select. */
+  function openClickedRow(event: MouseEvent) {
+    const row = clickedRow(event, rows, (candidate) => candidate.id, selectedKey);
+    if (row) openRow(row);
+  }
+
   onDestroy(() => {
     latest++;
     void inflight?.cancel().catch(() => undefined);
@@ -68,8 +76,8 @@
     <SearchField bind:value={term} placeholder={SEARCH_PLACEHOLDER} focusOnMount onInput={search} />
   </div>
   <div class="status">{statusText}</div>
-  <div class="results" bind:clientWidth={tableWidth}>
-    <Table {columns} {rows} rowKey={(row) => row.id} rowHeight={20} onDoubleClick={openRow}>
+  <div class="results" bind:clientWidth={tableWidth} role="presentation" onclick={openClickedRow}>
+    <Table {columns} {rows} rowKey={(row) => row.id} rowHeight={20} bind:selectedKey>
       {#snippet cell(row)}
         <span class="match" title={row.match.path}><span class="head">{row.head}</span>{"\t"}{row.body}</span>
       {/snippet}

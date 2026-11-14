@@ -208,9 +208,16 @@ export function deleteConfirmText(title: string): string {
   return `This will permanently remove "${title}".`;
 }
 
-/** The selected report after the list reloads: it stays selected only while it still matches the search. */
-export function selectionAfterReload(bugs: BugDTO[], selectedId: string | null): string | null {
-  return selectedId !== null && bugs.some((bug) => bug.id === selectedId) ? selectedId : null;
+/**
+ * The selection after the list reloads, as AppKit's table keeps it: the selected row index stays, so the
+ * report now at that row is selected (after a delete, the next report). Nothing is selected when the row
+ * no longer exists. `previous` is the list shown before the reload.
+ */
+export function selectionAfterReload(previous: BugDTO[], next: BugDTO[], selectedId: string | null): string | null {
+  if (selectedId === null) return null;
+  const index = previous.findIndex((bug) => bug.id === selectedId);
+  if (index < 0 || index >= next.length) return null;
+  return next[index].id;
 }
 
 /** The text to show for a failed request: the server's own message, or the error's text. */

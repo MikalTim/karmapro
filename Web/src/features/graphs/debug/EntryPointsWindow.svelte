@@ -87,12 +87,12 @@
           {@const row = node.data}
           {#if row.kind === "group"}
             <span class="category text">{row.group.category}</span>
-            <span class="secondary text"> — {sitesText(row.group.sites.length)}</span>
-            <span class="badge text" style="color: {badgeColor(row.group.origin)}">  {row.group.badge}</span>
+            <span class="secondary text">{` — ${sitesText(row.group.sites.length)}`}</span>
+            <span class="badge text" style="color: {badgeColor(row.group.origin)}">{`  ${row.group.badge}`}</span>
           {:else}
             <span class="site-label text">{row.site.label}</span>
-            <span class="secondary text">  {row.site.displaySnippet}</span>
-            <span class="source-kind text">  · {row.site.sourceKind}</span>
+            <span class="secondary text">{`  ${row.site.displaySnippet}`}</span>
+            <span class="source-kind text">{`  · ${row.site.sourceKind}`}</span>
           {/if}
         {/snippet}
       </Outline>

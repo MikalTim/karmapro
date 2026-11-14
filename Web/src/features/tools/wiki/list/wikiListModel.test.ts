@@ -90,7 +90,7 @@ describe("import conflict decisions", () => {
     expect(decisions).toEqual({ a: "overwrite", b: "rename", c: "skip" });
   });
 
-  it("Cancel Import skips the page and every page after it without asking again", async () => {
+  it("Cancel Import skips that page and every page after it without asking again", async () => {
     const asked: string[] = [];
     const decisions = await collectConflictDecisions(["a", "b", "c"], async (slug) => {
       asked.push(slug);

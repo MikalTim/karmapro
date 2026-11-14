@@ -45,3 +45,9 @@ export function noteCellValue(note: NoteDTO, columnId: string): string {
 export function noteRowKey(note: NoteDTO): string {
   return `${note.path}:${note.line}`;
 }
+
+/** The window's title: "Notes", and "Notes — <project name>" once a project is open (`notesClicked`). */
+export function notesWindowTitle(root: string | null): string {
+  if (root === null) return "Notes";
+  return `Notes \u2014 ${root.slice(root.lastIndexOf("/") + 1)}`;
+}

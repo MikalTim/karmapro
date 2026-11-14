@@ -126,6 +126,7 @@
       const choice = await showAlert({
         message: prompt.title,
         informative: prompt.message,
+        style: "warning",
         buttons: [prompt.confirmTitle, prompt.cancelTitle],
       });
       if (choice !== 0) return;
@@ -204,12 +205,17 @@
     font-size: 11px;
     color: var(--secondary-label);
   }
+  /* AppKit separates the paragraphs with one blank line of the 11 pt text, about 13 px; the 8 px gap supplies part of it. */
+  .note + .note {
+    margin-top: 5px;
+  }
   .heading {
     font-size: 12px;
     font-weight: 700;
     margin-top: 8px;
   }
   .list {
+    flex: none;
     height: 140px;
     display: flex;
     flex-direction: column;

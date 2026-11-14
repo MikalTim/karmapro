@@ -37,7 +37,7 @@
       0,
     );
     return columns.map(
-      (column) => dragged[column.id] ?? (column.id === "msg" ? Math.max(column.width, viewWidth - fixed) : column.width),
+      (column) => dragged[column.id] ?? (column.id === "msg" ? Math.max(MIN_COLUMN_WIDTH, viewWidth - fixed) : column.width),
     );
   });
   const total = $derived(widths.reduce((sum, width) => sum + width, 0));

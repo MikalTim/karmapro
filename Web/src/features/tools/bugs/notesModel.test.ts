@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { noteCellValue, noteRowKey, type NoteDTO } from "./notesModel";
+import { noteCellValue, noteRowKey, notesWindowTitle, type NoteDTO } from "./notesModel";
 
 const note: NoteDTO = {
   path: "/work/app/src/main.c",
@@ -26,5 +26,15 @@ describe("notes rows", () => {
     expect(noteRowKey(note)).not.toBe(noteRowKey(otherLine));
     expect(noteRowKey(note)).not.toBe(noteRowKey(otherFile));
     expect(noteRowKey(note)).toBe(noteRowKey({ ...note, text: "edited" }));
+  });
+});
+
+describe("notes window title", () => {
+  it("is plain Notes without an open project", () => {
+    expect(notesWindowTitle(null)).toBe("Notes");
+  });
+
+  it("names the open project after an em dash", () => {
+    expect(notesWindowTitle("/home/me/work/pscan-fixture")).toBe("Notes \u2014 pscan-fixture");
   });
 });

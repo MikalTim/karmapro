@@ -169,6 +169,18 @@
     align-items: center;
     gap: 10px;
   }
+  .row :global(select) {
+    min-width: 220px;
+  }
+  .row :global(.slider .value) {
+    font-size: 12px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .btn.default:disabled {
+    background: rgba(10, 132, 255, 0.35);
+    color: var(--tertiary-label);
+  }
   .progress {
     width: 100%;
   }

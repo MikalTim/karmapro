@@ -19,7 +19,8 @@
     type BugListDTO,
   } from "./bugModel";
   import { backupBugs, deleteBug, importBugs } from "./bugActions";
-  import { openBugEditorWindow } from "./openBugEditor";
+  import BugEditorSheet from "./BugEditorSheet.svelte";
+  import { bugEditorRequest, type BugEditorOptions } from "./bugEditorRequest.svelte";
   // Windows receive their id; the list does not need it itself.
   let { windowId }: { windowId: number } = $props();
 
@@ -42,33 +43,40 @@
   let countText = $state("");
   let query = $state("");
   let selectedKey = $state<string | null>(null);
+  let editor = $state<BugEditorOptions | null>(null);
   let requestSeq = 0;
 
   const selected = $derived(bugs.find((bug) => bug.id === selectedKey) ?? null);
 
-  async function reload(): Promise<void> {
+  /**
+   * Loads the reports matching the search. The selection follows AppKit's table: a reload keeps the
+   * selected row index, so the report now at that row is selected. `selectId` (after a save) wins.
+   */
+  async function reload(selectId?: string): Promise<void> {
     // Answers to older searches are dropped, so the list always shows the latest query.
     const seq = ++requestSeq;
     try {
       const result = await api<BugListDTO>("GET", withQuery("/api/bugs", { query }));
       if (seq !== requestSeq) return;
+      selectedKey = selectId ?? selectionAfterReload(bugs, result.bugs, selectedKey);
       bugs = result.bugs;
       countText = result.countText;
-      selectedKey = selectionAfterReload(result.bugs, selectedKey);
     } catch (error) {
       if (seq === requestSeq) await showAlert({ message: messageOf(error), buttons: ["OK"] });
     }
   }
 
+  // A request from outside the list (`openBugEditorWindow`) opens the editor sheet here.
+  $effect(() => {
+    const pending = bugEditorRequest.pending;
+    if (pending === null) return;
+    bugEditorRequest.pending = null;
+    editor = pending;
+  });
+
   // presentEditor: after a save the list reloads and selects the saved report.
   function openEditor(id?: string): void {
-    openBugEditorWindow({
-      id,
-      onSaved: (saved) => {
-        selectedKey = saved.id;
-        void reload();
-      },
-    });
+    editor = { id, onSaved: (saved) => void reload(saved.id) };
   }
 
   async function removeSelected(): Promise<void> {
@@ -79,8 +87,7 @@
   }
 
   async function runImport(): Promise<void> {
-    await importBugs();
-    await reload();
+    await importBugs(reload);
   }
 
   onMount(() => {
@@ -134,6 +141,9 @@
       <button class="btn" disabled={!selected} onclick={() => void removeSelected()}>Delete</button>
     </div>
   </section>
+  {#if editor}
+    <BugEditorSheet {windowId} id={editor.id} onSaved={editor.onSaved} onClose={() => (editor = null)} />
+  {/if}
 </div>
 
 <style>

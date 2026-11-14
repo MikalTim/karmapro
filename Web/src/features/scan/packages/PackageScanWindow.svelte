@@ -14,6 +14,7 @@
   import Table from "../../../lib/ui/Table.svelte";
   import { openAIWindow } from "../../ai";
   import { showFileInMainWindow } from "../../main/navigation";
+  import { clickedRow } from "../rowClick";
   import { errorText } from "./errorText";
   import {
     ASK_AI_TITLE,
@@ -42,14 +43,17 @@
   // The progress bar shows only for a scan, as in AppKit; a detection shows the spinner alone.
   let runKind = $state<RunKind | null>(null);
   let tableWidth = $state(0);
+  // AppKit enables Ignore only after a click on a row, and a scan start disables it again.
+  let ignoreArmed = $state(false);
   let closed = false;
+  const RUNNING_POLL_MS = 500;
   // Bumped whenever a state is applied, so a progress refresh answered after the
   // final state arrived is dropped.
   let generation = 0;
 
   const rows = $derived(packageRows(scanState?.findings ?? []));
   const columns = $derived(packageColumns(tableWidth));
-  const ignoreEnabled = $derived(scanState !== null && !scanState.busy && selectedKey !== null);
+  const ignoreEnabled = $derived(scanState !== null && !scanState.busy && ignoreArmed && selectedKey !== null);
 
   function apply(next: PackageScanState) {
     generation++;
@@ -81,10 +85,30 @@
     }
   }
 
+  /** Shows a scan that another window started, until the server reports that it has finished. */
+  async function followRunningScan(initial: PackageScanState) {
+    scanState = initial;
+    runKind = "scan";
+    let next = initial;
+    while (next.busy && !closed) {
+      await new Promise((resolve) => setTimeout(resolve, RUNNING_POLL_MS));
+      if (closed) return;
+      next = await api<PackageScanState>("GET", "/api/packages");
+      apply(next);
+    }
+    runKind = null;
+  }
+
   onMount(async () => {
     const initial = await api<PackageScanState>("GET", "/api/packages");
     apiSource = initial.selectedApiSource;
     scanState = initial;
+    if (initial.busy) {
+      // The server keeps one scan for every window. A scan that an earlier window started is still
+      // running, so this window follows it until it ends, instead of starting a detection the server refuses.
+      await followRunningScan(initial);
+      return;
+    }
     await run("detect", api<{ jobId: string }>("POST", "/api/packages/detect"));
   });
 
@@ -93,6 +117,7 @@
   });
 
   function scan() {
+    ignoreArmed = false;
     void run("scan", api<{ jobId: string }>("POST", "/api/packages/scan", { apiSource }));
   }
 
@@ -120,8 +145,17 @@
     showFileInMainWindow(row.finding.path, row.finding.line);
   }
 
+  /** A mouse click on a finding opens it, as AppKit's `rowClicked` does. Keyboard moves only select. */
+  function openClickedRow(event: MouseEvent) {
+    const row = clickedRow(event, rows, (candidate) => candidate.id, selectedKey);
+    if (!row) return;
+    ignoreArmed = true;
+    openRow(row);
+  }
+
   function rowMenu(row: PackageRow | null, event: MouseEvent) {
     if (!row) return;
+    ignoreArmed = true;
     showContextMenu(event, [
       { title: ASK_AI_TITLE, action: () => openAIWindow({ prompt: vulnerabilityQuestion(row.finding) }) },
     ]);
@@ -171,7 +205,7 @@
       <div class="progress"><ProgressBar value={scanState.progress} /></div>
     {/if}
 
-    <div class="table-wrap" bind:clientWidth={tableWidth}>
+    <div class="table-wrap" bind:clientWidth={tableWidth} role="presentation" onclick={openClickedRow}>
       <Table
         {columns}
         {rows}
@@ -181,7 +215,6 @@
         sortKey={scanState.sortKey}
         ascending={scanState.sortAscending}
         onSort={sortBy}
-        onDoubleClick={openRow}
         onContextMenu={rowMenu}
       >
         {#snippet cell(row, column)}

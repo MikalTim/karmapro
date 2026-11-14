@@ -36,15 +36,16 @@ const repo: RepoDTO = {
 };
 
 describe("repository table", () => {
-  it("has the six AppKit columns with their widths", () => {
+  it("has the six columns at the AppKit widths, with only the last one giving way to the 626 pt table", () => {
     expect(repoColumns.map((column) => [column.id, column.width])).toEqual([
       ["Watching", 80],
       ["Repository", 170],
       ["Type", 90],
       ["Account", 120],
       ["Depth", 130],
-      ["Source", 110],
+      ["Source", 36],
     ]);
+    expect(repoColumns.reduce((sum, column) => sum + (column.width ?? 0), 0)).toBe(626);
   });
 
   it("shows the server's text in each text column", () => {
@@ -105,23 +106,43 @@ describe("add form state", () => {
 });
 
 describe("detection status", () => {
-  const detection = (statusText: string | null, statusTone: string | null): DetectionDTO => ({
-    recognised: statusText !== null,
+  const detection = (recognised: boolean, statusText: string | null, tone: string | null): DetectionDTO => ({
+    recognised,
     isPrivate: false,
     accounts: [],
     selectedAccountIdentity: null,
     statusText,
-    statusTone,
+    statusTone: tone,
+  });
+  const publicHint = { text: "Public repository: no credentials are used or sent.", tone: "info" };
+
+  it("shows the public hint with the box unticked, even for an empty or unreadable URL", () => {
+    expect(detectionLine(detection(false, null, null), false)).toEqual(publicHint);
+    expect(detectionLine(detection(false, "Could not read that as a repository URL.", "error"), false)).toEqual(publicHint);
   });
 
-  it("clears the line while the URL is empty", () => {
-    expect(detectionLine(detection(null, null))).toEqual({ text: "", tone: "info" });
+  it("shows the public hint after the box is unticked on a Gitea URL, which the server still reports as private", () => {
+    expect(detectionLine(detection(true, "Private repository: no saved account can reach the forge.", "warning"), false)).toEqual(
+      publicHint,
+    );
   });
 
-  it("shows an unreadable URL in red and a missing account in orange", () => {
-    expect(detectionLine(detection("Could not read that as a repository URL.", "error")).tone).toBe("error");
-    expect(detectionLine(detection("Private repository: no saved account can reach GitHub.", "warning")).tone).toBe(
-      "warning",
+  it("shows the orange no-account hint without a forge name when the box is ticked and the URL is not readable", () => {
+    const expected = {
+      text: "Private repository: no saved account can reach the forge. Add one in Accounts\u2026 first.",
+      tone: "warning",
+    };
+    expect(detectionLine(detection(false, null, null), true)).toEqual(expected);
+    expect(detectionLine(detection(false, "Could not read that as a repository URL.", "error"), true)).toEqual(expected);
+  });
+
+  it("passes the server's line through for a readable URL with the box ticked", () => {
+    expect(detectionLine(detection(true, "Private repository: no saved account can reach GitHub.", "warning"), true)).toEqual({
+      text: "Private repository: no saved account can reach GitHub.",
+      tone: "warning",
+    });
+    expect(detectionLine(detection(true, 'Private repository: uses account "alice" on api.github.com.', "info"), true).tone).toBe(
+      "info",
     );
   });
 });

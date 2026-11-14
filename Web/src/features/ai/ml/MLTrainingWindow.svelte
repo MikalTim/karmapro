@@ -177,7 +177,7 @@
   </div>
   <div class="row">
     <span class="label">Model name:</span>
-    <TextField bind:value={name} placeholder="e.g. CVE-2024-patches" width={320} />
+    <TextField bind:value={name} placeholder="e.g. CVE-2024-patches" />
   </div>
   {#if training}
     <div class="progress"><ProgressBar value={progress} /></div>
@@ -210,6 +210,14 @@
     gap: 12px;
     color: var(--label);
     overflow: auto;
+  }
+  .row :global(input) {
+    flex: 1;
+    min-width: 260px;
+  }
+  .btn.default:disabled {
+    background: rgba(10, 132, 255, 0.35);
+    color: var(--tertiary-label);
   }
   .intro {
     font-size: 12px;

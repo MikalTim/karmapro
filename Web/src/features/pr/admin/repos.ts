@@ -4,14 +4,17 @@ import type { Column } from "../../../lib/ui/Table.svelte";
 import type { AccountChoiceDTO, DetectionDTO, PRChoiceDTO, RepoDTO } from "./dto";
 import { statusLine, toneNamed, type StatusLine } from "./status";
 
-// The Watching column is drawn with a checkbox by the component; the others read their text here.
+// The Swift columns (80, 170, 90, 120, 130 and 110 pt) total 700 pt, wider than the 626 pt of the table inside
+// the 660 pt window. AppKit never sets `columnAutoresizingStyle` or a column `resizingMask`, so the table uses the
+// default last-column-only style: only the last column gives way when the table frame is narrower than the
+// columns, and the first five keep their widths. That leaves 626 - 590 = 36 pt for Source.
 export const repoColumns: Column<RepoDTO>[] = [
   { id: "Watching", title: "Watching", width: 80 },
   { id: "Repository", title: "Repository", width: 170, value: (repo) => repo.repoSlug },
   { id: "Type", title: "Type", width: 90, value: (repo) => repo.typeText },
   { id: "Account", title: "Account", width: 120, value: (repo) => repo.accountText },
   { id: "Depth", title: "Depth", width: 130, value: (repo) => repo.depthTitle },
-  { id: "Source", title: "Source", width: 110, value: (repo) => repo.sourceText },
+  { id: "Source", title: "Source", width: 36, value: (repo) => repo.sourceText },
 ];
 
 export interface RepoFormState {
@@ -43,9 +46,22 @@ export function showsAccountPicker(choices: AccountChoiceDTO[]): boolean {
   return choices.length > 1;
 }
 
-/** The status line for a detection reply. An empty URL has no text, so the line is cleared. */
-export function detectionLine(detection: DetectionDTO): StatusLine {
-  return detection.statusText ? statusLine(detection.statusText, toneNamed(detection.statusTone)) : statusLine("");
+const PUBLIC_HINT = "Public repository: no credentials are used or sent.";
+const NO_FORGE_ACCOUNT_HINT = "Private repository: no saved account can reach the forge. Add one in Accounts\u2026 first.";
+
+/**
+ * The status line after the URL or the Private box was committed. `urlFieldChanged` and `privateToggled` always end
+ * in `updatePrivacyHint`, which rewrites the line even when the field is empty or cannot be read, so the line is
+ * never left as it was. With the box unticked it is the public hint. With it ticked, a readable URL gets the
+ * server's account-specific text, and an unreadable one the orange "no saved account" hint that names no forge.
+ *
+ * `isPrivate` is the state of the box after the commit. It is passed in because the server's reply always treats
+ * a Gitea host as private, while only a typed URL (never a click on the box) ticks the box in AppKit.
+ */
+export function detectionLine(detection: DetectionDTO, isPrivate: boolean): StatusLine {
+  if (!isPrivate) return statusLine(PUBLIC_HINT);
+  if (detection.recognised) return statusLine(detection.statusText ?? "", toneNamed(detection.statusTone));
+  return statusLine(NO_FORGE_ACCOUNT_HINT, "warning");
 }
 
 /**

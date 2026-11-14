@@ -99,7 +99,7 @@ function conflictChoice(button: number): WikiConflictChoice {
 
 /**
  * Asks once per conflicting slug, in the order the server lists them. "Cancel Import"
- * skips that slug and every slug after it without asking again.
+ * skips that slug and every slug after it without asking again (plan: "skip all").
  */
 export async function collectConflictDecisions(
   conflicts: string[],

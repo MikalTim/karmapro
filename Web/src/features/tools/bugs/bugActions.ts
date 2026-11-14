@@ -72,7 +72,7 @@ export async function backupBugs(): Promise<void> {
 }
 
 /** Import…: uploads the chosen file, asking for its password when it is encrypted. */
-export async function importBugs(): Promise<void> {
+export async function importBugs(reloadList: () => Promise<void>): Promise<void> {
   const file = await chooseFile(".karmapro,.json");
   if (!file) return;
   try {
@@ -94,6 +94,8 @@ export async function importBugs(): Promise<void> {
       await alertOK("Nothing to Import", "The selected file contains no bug reports.");
       return;
     }
+    // The list reloads before the result alert, as `importClicked` does.
+    await reloadList();
     await alertOK("Import Complete", importCompleteText(result.added, file.name));
   } catch (error) {
     await alertOK("Import Failed", messageOf(error));

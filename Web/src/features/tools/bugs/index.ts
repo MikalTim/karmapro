@@ -3,7 +3,7 @@ import { asWindowContent, openWindow } from "../../../lib/ui/windows.svelte";
 import BugListWindow from "./BugListWindow.svelte";
 import NotesWindow from "./NotesWindow.svelte";
 
-export { openBugEditorWindow, type BugEditorOptions } from "./openBugEditor";
+export { openBugEditorWindow, type BugEditorOptions } from "./bugEditorRequest.svelte";
 export { default as NotePopover } from "./NotePopover.svelte";
 
 /** The security bugs tracker. AppKit keeps one stored controller, so opening it again focuses it. */

@@ -5,6 +5,7 @@
 import { api, withQuery } from "../../../lib/api";
 import { type RunningJob, runJob } from "../../../lib/jobs";
 import { asWindowContent, openWindow, setWindowTitle } from "../../../lib/ui/windows.svelte";
+import { projectState } from "../../main/projectState.svelte";
 import type { ComplexityDTO, ComplexityPointDTO } from "./dto";
 import ComplexityWindow from "./ComplexityWindow.svelte";
 
@@ -55,6 +56,8 @@ async function show(path: string | undefined): Promise<void> {
     return;
   }
 
+  // The project chart's title names the folder at once, before the analysis returns (`loadProject`).
+  if (projectState.name !== null) setWindowTitle(id, `Complexity distribution — ${projectState.name}`);
   complexity.summary = "Analyzing complexity distribution…";
   complexity.analysing = true;
   const job = runJob<ComplexityDTO>(api<{ jobId: string }>("GET", "/api/complexity"));

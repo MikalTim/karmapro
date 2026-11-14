@@ -73,7 +73,7 @@ describe("export and import texts", () => {
   it("names the file that was exported", () => {
     expect(exportedAlert("base", "base.karmamodel")).toEqual({
       message: "Exported",
-      informative: "Model “base” exported to base.karmamodel.",
+      informative: "Model “base” exported to base.karmamodel",
     });
   });
 

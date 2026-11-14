@@ -1,6 +1,7 @@
 // The openers of the data-flow and backtrace windows. AppKit creates a new controller for each
 // action, so each call opens a new window (no singleton key).
 import { asWindowContent, openWindow } from "../../../lib/ui/windows.svelte";
+import { projectState } from "../../main/projectState.svelte";
 import BacktraceWindow from "./BacktraceWindow.svelte";
 import DataFlowWindow from "./DataFlowWindow.svelte";
 
@@ -18,8 +19,9 @@ export function openDataFlowWindow(target: { path: string; functionName: string 
   });
 }
 
-/** `BacktraceAnalyserWindowController`: 1000 x 560, at least 660 x 380. */
+/** `BacktraceAnalyserWindowController`: 1000 x 560, at least 660 x 380. Without an open project nothing happens. */
 export function openBacktraceWindow(): void {
+  if (projectState.root === null) return;
   openWindow({
     title: "Backtrace Analyser",
     width: 1000,

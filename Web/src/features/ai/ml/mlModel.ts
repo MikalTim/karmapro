@@ -152,7 +152,7 @@ export function exportProblem(names: string[]): AlertText | null {
 }
 
 export function exportedAlert(name: string, fileName: string): AlertText {
-  return { message: "Exported", informative: `Model “${name}” exported to ${fileName}.` };
+  return { message: "Exported", informative: `Model “${name}” exported to ${fileName}` };
 }
 
 export function exportFailedAlert(reason: string): AlertText {

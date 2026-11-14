@@ -11,7 +11,6 @@
   import type { Column } from "../../../lib/ui/Table.svelte";
   import TextField from "../../../lib/ui/TextField.svelte";
   import { showAlert } from "../../../lib/ui/alert.svelte";
-  import { pickPath } from "../../../lib/ui/directoryPicker.svelte";
   import type {
     AccountChoiceDTO,
     CachePromptDTO,
@@ -21,6 +20,7 @@
     RepositoriesDTO,
     StatusDTO,
   } from "./dto";
+  import MiddleText from "./MiddleText.svelte";
   import { createLatest } from "./latest";
   import {
     afterRepoAdded,
@@ -33,9 +33,6 @@
     type RepoFormState,
   } from "./repos";
   import { classifyFailure, messageOf, resultLine, statusColour, statusLine, type StatusLine } from "./status";
-
-  /** How long the URL must stay unchanged before it is read; keeps a fast typist from one request per key. */
-  const DETECT_DELAY_MS = 250;
 
   // The window host passes `windowId`; this window needs nothing from it.
   let { windowId }: { windowId: number } = $props();
@@ -60,7 +57,6 @@
   const depthHint = $derived(depthExplanation(data?.depthChoices ?? [], form.depth));
   const notice = $derived(notificationNotice(permission));
   const detector = createLatest();
-  let detectTimer: ReturnType<typeof setTimeout> | undefined;
 
   function selectedRepo(): RepoDTO | undefined {
     return data?.repos.find((repo) => repo.id === selectedId);
@@ -89,21 +85,18 @@
   async function reportFailure(error: unknown) {
     const failure = classifyFailure(messageOf(error));
     if (failure.kind === "alert") {
-      await showAlert({ message: failure.title, informative: failure.detail, buttons: ["OK"] });
+      await showAlert({ message: failure.title, informative: failure.detail, style: "warning", buttons: ["OK"] });
     } else {
       status = statusLine(failure.text, "error");
     }
   }
 
-  function typedURL() {
-    clearTimeout(detectTimer);
-    detectTimer = setTimeout(() => void detect(true), DETECT_DELAY_MS);
-  }
-
   /**
-   * Reads the URL and the private/account choices as the add form does while it is typed. `fromURL` lets the
-   * server tick the private box for a self-hosted forge, as AppKit does on a typed URL. Toggling the box or the
-   * account never unticks it.
+   * Reads the URL and the private/account choices as the add form does. The URL is read only when editing ends
+   * (Enter or the field losing focus, which is when the field's action `urlFieldChanged` runs in AppKit), never per
+   * keystroke. `fromURL` lets the server tick the private box for a self-hosted forge, as AppKit does for a URL.
+   * Toggling the box or the account never unticks it. The status line is rewritten every time, as
+   * `updatePrivacyHint` does.
    */
   async function detect(fromURL: boolean) {
     const ticket = detector.next();
@@ -114,10 +107,12 @@
         accountIdentity: form.accountIdentity,
       });
       if (!detector.isLatest(ticket)) return;
-      if (fromURL && reply.isPrivate) form.isPrivate = true;
-      accountChoices = reply.accounts;
-      form.accountIdentity = reply.selectedAccountIdentity ?? null;
-      status = detectionLine(reply);
+      // Only a typed URL ticks the box (for a self-hosted forge); a click on the box or the account never does.
+      const privateNow = fromURL ? reply.isPrivate : form.isPrivate;
+      form.isPrivate = privateNow;
+      accountChoices = privateNow ? reply.accounts : [];
+      form.accountIdentity = privateNow ? (reply.selectedAccountIdentity ?? null) : null;
+      status = detectionLine(reply, privateNow);
     } catch (error) {
       if (detector.isLatest(ticket)) status = statusLine(messageOf(error), "error");
     }
@@ -126,11 +121,6 @@
   function chooseAccount(identity: string) {
     form.accountIdentity = identity;
     void detect(false);
-  }
-
-  async function chooseLocalClone() {
-    const path = await pickPath({ message: "Choose an existing local clone of the repository.", prompt: "Choose" });
-    if (path) form.localPath = path;
   }
 
   /** Pauses or resumes one repository without removing it (the Watching checkbox). */
@@ -145,7 +135,6 @@
   }
 
   async function addRepository() {
-    clearTimeout(detectTimer);
     // Answers to a detection still in flight would put back the URL that was just cleared.
     detector.next();
     try {
@@ -196,6 +185,7 @@
       const choice = await showAlert({
         message: prompt.title,
         informative: prompt.message,
+        style: "warning",
         buttons: [prompt.confirmTitle, prompt.cancelTitle],
       });
       if (choice !== 0) return;
@@ -218,6 +208,7 @@
         const choice = await showAlert({
           message: prompt.title,
           informative: prompt.message,
+          style: "warning",
           buttons: [prompt.confirmTitle, prompt.cancelTitle],
         });
         if (choice !== 0) return;
@@ -262,7 +253,7 @@
             onchange={(event) => void setWatching(repo, event.currentTarget)}
           />
         {:else}
-          <span class="cell-text" title={repo.webURL}>{column.value?.(repo) ?? ""}</span>
+          <MiddleText text={column.value?.(repo) ?? ""} title={repo.webURL} />
         {/if}
       {/snippet}
     </Table>
@@ -286,25 +277,24 @@
   <div class="heading">Add a repository</div>
   <div class="grid">
     <span>Repository</span>
-    <TextField
-      bind:value={form.url}
-      placeholder="https://github.com/owner/name (or a git remote URL)"
-      onChange={typedURL}
-      onEnter={addRepository}
-    />
+    <!-- focusout bubbles from the input: leaving the field ends editing, which sends the field's action in AppKit. -->
+    <div class="url-field" role="presentation" onfocusout={() => void detect(true)}>
+      <TextField
+        bind:value={form.url}
+        placeholder="https://github.com/owner/name (or a git remote URL)"
+        onEnter={() => void detect(true)}
+      />
+    </div>
     {#if showsAccountPicker(accountChoices)}
       <span>Account</span>
       <PopUp items={accountItems} value={form.accountIdentity ?? ""} onChange={chooseAccount} />
     {/if}
     <span>Local clone</span>
-    <div class="inline">
-      <TextField
-        bind:value={form.localPath}
-        placeholder="optional: use an existing local clone instead of downloading"
-        onEnter={addRepository}
-      />
-      <button class="btn" onclick={chooseLocalClone}>Choose…</button>
-    </div>
+    <TextField
+      bind:value={form.localPath}
+      placeholder="optional: use an existing local clone instead of downloading"
+      onEnter={addRepository}
+    />
     <span>Scan depth</span>
     <PopUp items={depthItems} bind:value={form.depth} />
     <span></span>
@@ -344,7 +334,7 @@
     padding: 16px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 0;
     color: var(--label);
     background: var(--window-bg);
   }
@@ -352,6 +342,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    margin-top: 12px;
   }
   .check input {
     accent-color: var(--accent);
@@ -360,9 +351,13 @@
   .heading {
     font-size: 12px;
     font-weight: 700;
-    margin-top: 8px;
+    margin: 18px 0 8px;
+  }
+  .heading:first-child {
+    margin: 0 0 6px;
   }
   .list {
+    flex: none;
     height: 160px;
     display: flex;
     flex-direction: column;
@@ -371,20 +366,18 @@
   .list :global(.header) {
     display: none;
   }
-  .cell-text {
-    display: block;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .row {
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-top: 8px;
+  }
+  .row:last-child {
+    margin-top: 12px;
   }
   .between {
     justify-content: space-between;
+    margin-top: 4px;
   }
   .cache {
     min-width: 0;
@@ -395,12 +388,14 @@
     white-space: nowrap;
   }
   .poll-error {
-    margin: 0;
+    margin: 6px 0 0;
     font-size: 10px;
+    /* One line per failed repository, as the wrapping label shows the newline-separated detail. */
+    white-space: pre-line;
     color: var(--system-red);
   }
   .notice {
-    margin: 0;
+    margin: 6px 0 0;
     font-size: 10px;
   }
   .grid {
@@ -412,21 +407,15 @@
   .grid > span {
     justify-self: end;
   }
-  .grid > :global(.field) {
+  /* The wrapper only receives focusout; its box is dropped so the input stays the grid item. */
+  .url-field {
+    display: contents;
+  }
+  .grid :global(.field) {
     width: 100%;
   }
   .grid > :global(.popup) {
     justify-self: start;
-  }
-  .inline {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
-  .inline :global(.field) {
-    flex: 1;
-    min-width: 0;
   }
   .hint {
     margin: 0;

@@ -1,7 +1,8 @@
 <script lang="ts">
-  // The note popover (NotePopoverController): a note on one line of a source
-  // file, opened from the gutter. It loads the line's note, saves it (blank
-  // text removes it), removes it, and closes after either.
+  // The note popover (NotePopoverController): a note on one line of a source file,
+  // opened from the gutter. It loads the line's note, saves it (blank text removes it)
+  // and removes it. Save and Remove keep the popover open, as AppKit does: the gutter
+  // marker follows through `notes.changed`. Only an outside click or Escape closes it.
   import { onMount, tick } from "svelte";
   import { api, withQuery } from "../../../lib/api";
   import Popover from "../../../lib/ui/Popover.svelte";
@@ -50,7 +51,6 @@
     try {
       if (action.kind === "remove") await api("DELETE", noteQuery);
       else await api("PUT", noteQuery, { text: action.text });
-      onClose();
     } catch (error) {
       await showAlert({ message: messageOf(error), buttons: ["OK"] });
     }
@@ -59,7 +59,6 @@
   async function remove(): Promise<void> {
     try {
       await api("DELETE", noteQuery);
-      onClose();
     } catch (error) {
       await showAlert({ message: messageOf(error), buttons: ["OK"] });
     }
