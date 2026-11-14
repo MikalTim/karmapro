@@ -34,6 +34,8 @@ public enum KarmaMCP {
         MCPService.makeTransport = make
         // The web server has no main run loop to deliver change callbacks on.
         MCPService.changeQueue = DispatchQueue(label: "app.karmapro.mcp.changes")
+        // The web server reports every MCP state change to the browser tabs through the event bus.
+        MCPService.shared.onChange = { KarmaEventBus.shared.post("mcp.changed", KarmaMCP.state()) }
     }
 
     public static func state() -> MCPStateDTO {

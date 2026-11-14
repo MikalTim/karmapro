@@ -1,0 +1,211 @@
+// by cipher.org.uk
+import Foundation
+import XCTest
+@testable import KarmaCore
+
+/// The flow, data-flow, variable-flow, reachability, complexity, backtrace and class-usage services.
+final class FlowServiceTests: XCTestCase {
+
+    private static let cSource = """
+    #include <stdio.h>
+
+    int helper(int v) {
+        return v + 1;
+    }
+
+    int compute(int n) {
+        int total = 0;
+        if (n > 0) {
+            total = helper(n);
+        } else {
+            total = -1;
+        }
+        while (total < 10) {
+            total = total + 1;
+        }
+        return total;
+    }
+
+    int main(void) {
+        return compute(3);
+    }
+
+    """
+
+    private static let javaSource = """
+    public class Main {
+        public static void main(String[] args) {
+            Widget first = new Widget(1);
+            Widget second = new Widget(2);
+        }
+    }
+
+    class Widget {
+        Widget(int id) {}
+    }
+
+    """
+
+    private static let pythonSource = """
+    import os
+
+    def run(cmd):
+        os.system(cmd)
+
+    """
+
+    /// Polls until `condition` holds, so tests do not depend on how fast a background job runs.
+    private func waitUntil(_ message: String, timeout: TimeInterval = 30, _ condition: () -> Bool,
+                           file: StaticString = #filePath, line: UInt = #line) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline {
+                XCTFail("Timed out waiting for: \(message)", file: file, line: line)
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+    }
+
+    /// Writes the files into a fresh temporary folder that is removed after the test.
+    private func makeProject(_ files: [String: String]) throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("karma-flow-\(UUID().uuidString)", isDirectory: true)
+        for (path, text) in files {
+            let url = root.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try text.write(to: url, atomically: true, encoding: .utf8)
+        }
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        return root
+    }
+
+    /// Opens the fixture as the workspace project and waits until its index (and the caches the graphs use) is ready.
+    private func openProject(_ files: [String: String]) throws -> URL {
+        let root = try makeProject(files)
+        try KarmaWorkspace.shared.open(root: root.path)
+        waitUntil("the index is ready") { KarmaWorkspace.shared.info().indexState == "ready" }
+        return root
+    }
+
+    /// Waits for a job to finish and decodes its result.
+    private func result<T: Decodable>(_ jobID: String, as type: T.Type) throws -> T {
+        waitUntil("job \(jobID) finishes") {
+            ["completed", "failed", "cancelled"].contains(KarmaJobCenter.shared.job(jobID)?.status ?? "")
+        }
+        let job = try XCTUnwrap(KarmaJobCenter.shared.job(jobID))
+        XCTAssertEqual(job.status, "completed", job.error ?? "")
+        return try KarmaJSON.decoder.decode(type, from: try XCTUnwrap(job.resultJSON))
+    }
+
+    // MARK: - Flow panel
+
+    func testFlowChartHasDecisionBranchesAndLoopBackEdge() throws {
+        let root = try makeProject(["main.c": Self.cSource])
+        let file = root.appendingPathComponent("main.c").path
+
+        let flow = try FlowService.flow(path: file, function: "compute")
+
+        let chart = try XCTUnwrap(flow.chart)
+        let decisions = chart.nodes.filter { $0.kind == "decision" }.map { $0.label }
+        XCTAssertTrue(decisions.contains("if n > 0"), "decisions were \(decisions)")
+        XCTAssertTrue(decisions.contains("while total < 10"), "decisions were \(decisions)")
+        XCTAssertTrue(chart.edges.contains { $0.branch == "T" }, "no true branch")
+        XCTAssertTrue(chart.edges.contains { $0.branch == "F" }, "no false branch")
+        XCTAssertTrue(chart.edges.contains { $0.isBackEdge }, "the while loop has no back edge")
+        XCTAssertEqual(flow.complexity, 3)
+        XCTAssertEqual(flow.callees, ["helper"])
+        XCTAssertEqual(flow.lineCount, Self.cSource.components(separatedBy: "\n").count)
+    }
+
+    func testFlowIsEmptyForAFunctionThatDoesNotExist() throws {
+        let root = try makeProject(["main.c": Self.cSource])
+        let flow = try FlowService.flow(path: root.appendingPathComponent("main.c").path, function: "missing")
+        XCTAssertNil(flow.complexity)
+        XCTAssertNil(flow.chart)
+        XCTAssertTrue(flow.callees.isEmpty)
+    }
+
+    // MARK: - Reachability
+
+    func testReachabilityJobReachesTargetFromLocalEntry() throws {
+        let root = try openProject(["main.c": Self.cSource])
+        let file = root.appendingPathComponent("main.c").path
+
+        let jobID = try FlowService.reachability(path: file, function: "helper")
+        let reach = try result(jobID, as: FlowService.ReachabilityDTO.self)
+
+        XCTAssertEqual(reach.windowTitle, "Reachability — helper")
+        XCTAssertTrue(reach.localReachable)
+        XCTAssertFalse(reach.remoteReachable)
+        let graph = try XCTUnwrap(reach.graph)
+        let edges = Set(graph.callEdges.map { "\($0.from)>\($0.to)" })
+        XCTAssertTrue(edges.contains("Local>main"), "edges were \(edges)")
+        XCTAssertTrue(edges.contains("main>compute"), "edges were \(edges)")
+        XCTAssertTrue(edges.contains("compute>helper"), "edges were \(edges)")
+        XCTAssertEqual(graph.highlight, "helper")
+        XCTAssertEqual(graph.layoutDirection, "topToBottom")
+        XCTAssertEqual(graph.layoutSourceNodes, ["Local"])
+        XCTAssertTrue(graph.nodes.contains { $0.name == "Local" && $0.isOrigin })
+    }
+
+    // MARK: - Class usage
+
+    func testClassUsageJobListsEveryInstantiation() throws {
+        let root = try openProject(["Main.java": Self.javaSource])
+
+        let jobID = try FlowService.classUsage(className: "Widget")
+        let usage = try result(jobID, as: FlowService.ClassUsageDTO.self)
+
+        XCTAssertEqual(usage.windowTitle, "Instantiations of Widget")
+        XCTAssertNil(usage.emptyMessage)
+        XCTAssertEqual(usage.sites.map { $0.line }, [3, 4])
+        XCTAssertTrue(usage.sites.allSatisfy { $0.snippet.hasPrefix("new Widget(") })
+        XCTAssertEqual(usage.sites.first?.path, root.appendingPathComponent("Main.java").standardizedFileURL.path)
+        XCTAssertEqual(usage.status, "2 instantiation(s) of “Widget” — click a node to open it")
+        XCTAssertEqual(usage.graph?.animatedOnlyEdges, true)
+    }
+
+    // MARK: - Backtrace
+
+    func testBacktraceResolvesPythonFrameToProjectFile() throws {
+        let root = try openProject(["app.py": Self.pythonSource])
+        let trace = """
+        Traceback (most recent call last):
+          File "app.py", line 4, in run
+            os.system(cmd)
+        """
+
+        let backtrace = try FlowService.backtrace(text: trace)
+
+        let frame = try XCTUnwrap(backtrace.frames.first)
+        XCTAssertEqual(frame.functionName, "run")
+        XCTAssertEqual(frame.line, 4)
+        XCTAssertEqual(frame.path, root.appendingPathComponent("app.py").standardizedFileURL.path)
+        XCTAssertNil(backtrace.warning)
+    }
+
+    func testBacktraceWarnsForFrameOutsideTheProject() throws {
+        _ = try openProject(["app.py": Self.pythonSource])
+        let backtrace = try FlowService.backtrace(text: "  File \"missing.py\", line 2, in gone\n")
+
+        XCTAssertNil(backtrace.frames.first?.path)
+        XCTAssertEqual(backtrace.warning?.messageText, "Some files were not found in the open project")
+    }
+
+    // MARK: - Variable flow
+
+    func testVariableFlowJobCompletes() throws {
+        let root = try openProject(["main.c": Self.cSource])
+        let file = root.appendingPathComponent("main.c").path
+        let offset = (Self.cSource as NSString).range(of: "n > 0").location
+
+        let jobID = try FlowService.variableFlow(path: file, location: offset, variable: "n")
+        let flow = try result(jobID, as: FlowService.VariableFlowDTO.self)
+
+        XCTAssertEqual(flow.variableName, "n")
+        XCTAssertEqual(flow.windowTitle, "Variable Flow — n")
+        XCTAssertFalse(flow.nodes.isEmpty)
+        XCTAssertEqual(flow.nodes.first(where: { $0.isStart })?.functionName, "compute")
+    }
+}

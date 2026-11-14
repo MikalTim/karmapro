@@ -130,14 +130,24 @@ final class PRStore {
     /// not write the file back out half-restored.
     private var isLoading = false
 
-    private init() {
+    /// The app's store, in Application Support.
+    private convenience init() {
+        self.init(fileURL: PRStore.defaultFileURL())
+    }
+
+    /// A store kept in `fileURL`. Tests pass a temporary file so they never touch Application Support.
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+        load()
+    }
+
+    private static func defaultFileURL() -> URL {
         let base = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         let dir = base.appendingPathComponent("KarmaPro", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        fileURL = dir.appendingPathComponent("PullRequests.json")
-        load()
+        return dir.appendingPathComponent("PullRequests.json")
     }
 
     // MARK: - Accounts

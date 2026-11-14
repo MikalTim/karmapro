@@ -22,6 +22,7 @@ public enum KarmaWebServer {
         do {
             app.http.server.configuration.hostname = host
             app.http.server.configuration.port = port
+            startKarmaServices()
             try configure(app, token: token)
 
             let shownHost = host.contains(":") ? "[\(host)]" : host

@@ -29,8 +29,9 @@ private let missingFrontEndPage = """
 <h1>Karma Pro</h1><p>The web front end is not built. Run <code>npm ci &amp;&amp; npm run build</code> in <code>Web/</code>, or <code>./build.sh --no-appkit</code>.</p>
 """
 
-/// Registers middleware and routes. `token` is nil in loopback mode.
-func configure(_ app: Application, token: String?) throws {
+/// Registers middleware and routes. `token` is nil in loopback mode; `quit` is what `POST /api/app/quit` runs
+/// after answering (tests replace it so the test process survives).
+func configure(_ app: Application, token: String?, quit: @escaping @Sendable () -> Void = defaultQuit) throws {
     app.routes.defaultMaxBodySize = "256mb"
 
     if let webRoot = resolveWebRoot() {
@@ -47,4 +48,10 @@ func configure(_ app: Application, token: String?) throws {
         .grouped(KarmaErrorMiddleware())
         .grouped(KarmaAuthMiddleware(token: token))
     registerAppRoutes(api, tokenRequired: token != nil)
+    registerQuitRoute(api, quit: quit)
+    registerEventRoutes(api)
+    registerJobRoutes(api)
+    registerFileSystemRoutes(api)
+    registerResourceRoutes(api)
+    registerFeatureRoutes(api)
 }
