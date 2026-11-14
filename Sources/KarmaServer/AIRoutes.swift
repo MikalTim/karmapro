@@ -124,6 +124,17 @@ func registerAIRoutes(_ api: RoutesBuilder) {
         return jsonResponse(settings)
     }
 
+    // GET /api/ai/providers/:id/key
+    //   The saved key of a user endpoint, which the edit sheet prefills as AppKit's does. Kept out of the settings
+    //   reply so a state fetch never carries every endpoint's key. 404 unknown id, 400 for a built-in one.
+    //   response: {"apiKey"}
+    api.get("ai", "providers", ":id", "key") { req async throws -> Response in
+        struct Body: Encodable { let apiKey: String }
+        let id = try pathID(req)
+        let key = try await req.service { try AISettingsService.providerKey(id: id) }
+        return jsonResponse(Body(apiKey: key))
+    }
+
     // DELETE /api/ai/providers/:id
     //   Removes a user endpoint with its key and model. 404 unknown id, 400 for a built-in one.
     //   response: AISettingsService.AISettingsDTO

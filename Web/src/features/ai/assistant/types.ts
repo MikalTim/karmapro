@@ -16,8 +16,6 @@ export interface AIProvider {
   tableName: string;
   /** Endpoint table key column: "required" or "none". */
   tableKey: string;
-  /** The saved key of a user endpoint; empty for the built-in presets. */
-  apiKey: string;
 }
 
 export interface AIPrompt {

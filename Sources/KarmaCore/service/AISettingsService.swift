@@ -29,12 +29,9 @@ public enum AISettingsService {
         public var tableName: String
         /// The endpoint table's key column: "required" or "none".
         public var tableKey: String
-        /// The saved API key of a user endpoint, for the editor sheet's key field (which AppKit prefills the same
-        /// way). Empty for built-in presets, whose key is edited in the assistant window.
-        public var apiKey: String
 
         public init(id: String, name: String, baseURL: String, requiresAPIKey: Bool, isBuiltin: Bool,
-                    isOllama: Bool, popupTitle: String, tableName: String, tableKey: String, apiKey: String) {
+                    isOllama: Bool, popupTitle: String, tableName: String, tableKey: String) {
             self.id = id
             self.name = name
             self.baseURL = baseURL
@@ -44,7 +41,6 @@ public enum AISettingsService {
             self.popupTitle = popupTitle
             self.tableName = tableName
             self.tableKey = tableKey
-            self.apiKey = apiKey
         }
     }
 
@@ -299,6 +295,18 @@ public enum AISettingsService {
         return finishManagerAction(status: "Saved \(validated.name).")
     }
 
+    /// The saved key of a user endpoint, for the edit sheet's key field. It is read only when that sheet opens, so
+    /// the settings reply (sent on every state fetch) never carries the keys of every endpoint.
+    public static func providerKey(id: String) throws -> String {
+        guard let provider = ProviderStore.shared.provider(id: id) else {
+            throw KarmaServiceError.notFound("No provider with id \(id).")
+        }
+        guard !provider.isBuiltin else {
+            throw KarmaServiceError.invalid("The built-in providers' keys are edited in the assistant window.")
+        }
+        return UserDefaults.standard.string(forKey: "AI.\(id).apiKey") ?? ""
+    }
+
     /// Removes a user endpoint along with its key and model. A removed selected endpoint falls back to OpenRouter.
     public static func deleteProvider(id: String) throws -> AISettingsDTO {
         guard let provider = ProviderStore.shared.provider(id: id) else {
@@ -455,8 +463,7 @@ public enum AISettingsService {
             isOllama: provider.isOllama,
             popupTitle: provider.isBuiltin ? provider.name : provider.name + customMarker,
             tableName: provider.isBuiltin ? provider.name + builtinMarker : provider.name,
-            tableKey: provider.requiresAPIKey ? "required" : "none",
-            apiKey: provider.isBuiltin ? "" : (UserDefaults.standard.string(forKey: "AI.\(provider.id).apiKey") ?? ""))
+            tableKey: provider.requiresAPIKey ? "required" : "none")
     }
 
     private static func promptDTO(_ template: PromptTemplate) -> AIPromptDTO {

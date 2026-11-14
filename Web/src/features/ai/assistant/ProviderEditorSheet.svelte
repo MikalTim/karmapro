@@ -2,12 +2,12 @@
   // The add and edit form for one endpoint (ProviderEditorController), shown as a
   // sheet of the AI Providers window. The server checks the fields and saves
   // nothing when one is invalid; the refusal comes back as the alert's text.
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
   import Checkbox from "../../../lib/ui/Checkbox.svelte";
   import Sheet from "../../../lib/ui/Sheet.svelte";
   import TextField from "../../../lib/ui/TextField.svelte";
   import { showAlert } from "../../../lib/ui/alert.svelte";
-  import { saveProvider } from "./assistantStore.svelte";
+  import { loadProviderKey, saveProvider } from "./assistantStore.svelte";
   import type { AIProvider, AISettings } from "./types";
 
   let {
@@ -22,13 +22,31 @@
     onSaved: (settings: AISettings) => void;
   } = $props();
 
-  // The form starts from the endpoint being edited (its saved key included); the
-  // values then belong to the form, so later changes to the list do not reset it.
+  // The form starts from the endpoint being edited; the values then belong to the form, so later changes to the
+  // list do not reset it.
   let name = $state(untrack(() => existing?.name ?? ""));
   let baseURL = $state(untrack(() => existing?.baseURL ?? ""));
   let requiresKey = $state(untrack(() => existing?.requiresAPIKey ?? true));
-  let apiKey = $state(untrack(() => existing?.apiKey ?? ""));
+  let apiKey = $state("");
+  // An edited endpoint's saved key arrives from the server; until then the key field and Save wait, so a key typed
+  // at once is not replaced by it.
+  let keyLoaded = $state(untrack(() => existing === null));
   const heading = $derived(existing ? "Edit Provider" : "Add Provider");
+
+  onMount(() => {
+    if (existing === null) return;
+    loadProviderKey(existing.id)
+      .then((key) => (apiKey = key))
+      .catch((error: unknown) => {
+        void showAlert({
+          message: "Cannot Load the API Key",
+          informative: error instanceof Error ? error.message : String(error),
+          style: "warning",
+          buttons: ["OK"],
+        });
+      })
+      .finally(() => (keyLoaded = true));
+  });
 
   async function save(): Promise<void> {
     try {
@@ -64,12 +82,12 @@
       <span></span>
       <div><Checkbox bind:checked={requiresKey} label="This endpoint requires an API key" /></div>
 
-      <span class="label" class:disabled={!requiresKey}>API Key:</span>
-      <TextField secure bind:value={apiKey} placeholder="sk-…" disabled={!requiresKey} />
+      <span class="label" class:disabled={!requiresKey || !keyLoaded}>API Key:</span>
+      <TextField secure bind:value={apiKey} placeholder="sk-…" disabled={!requiresKey || !keyLoaded} />
     </div>
     <div class="buttons">
       <button class="btn" onclick={onClose}>Cancel</button>
-      <button class="btn default" onclick={save}>{existing ? "Save" : "Add"}</button>
+      <button class="btn default" disabled={!keyLoaded} onclick={save}>{existing ? "Save" : "Add"}</button>
     </div>
   </div>
 </Sheet>

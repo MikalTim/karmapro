@@ -82,7 +82,7 @@
       {#if removable}
         <button class="btn" onclick={() => void remove()}>Remove</button>
       {/if}
-      <button class="btn default" onclick={() => void save()}>Save</button>
+      <button class="btn default" disabled={!loaded} onclick={() => void save()}>Save</button>
     </div>
   </div>
 </Popover>

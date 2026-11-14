@@ -17,7 +17,7 @@ private struct UpdateAutomaticBody: Decodable {
 func registerSettingsRoutes(_ api: RoutesBuilder) {
     // GET /api/mcp
     //   request: none
-    //   response: KarmaMCP's MCPStateDTO {running, url, clientConfig, port, allowAI, autoStart, scanCount, lastError}
+    //   response: KarmaMCP's MCPStateDTO {running, url, clientConfig, port, allowAI, autoStart, scanCount, lastError, startedAt?}
     api.get("mcp") { req async throws -> Response in
         let state = try await req.service { KarmaMCP.state() }
         return jsonResponse(state)

@@ -147,6 +147,26 @@ final class AIMLRoutesTests: XCTestCase {
         }
     }
 
+    func testProviderKeyIsReadPerProviderAndNeverInTheSettings() async throws {
+        let app = try await makeApp()
+        defer { Task { try? await app.asyncShutdown() } }
+        try await app.test(.GET, "api/ai/providers/no-such-provider/key", headers: headers) { res async throws in
+            XCTAssertEqual(res.status, .notFound)
+        }
+        // A built-in preset's key is edited in the assistant window, so the edit sheet's route refuses it.
+        try await app.test(.GET, "api/ai/providers/builtin.openrouter/key", headers: headers) { res async throws in
+            XCTAssertEqual(res.status, .badRequest)
+        }
+        // The settings reply lists every endpoint on each state fetch; no endpoint entry may carry a key.
+        try await app.test(.GET, "api/ai", headers: headers) { res async throws in
+            XCTAssertEqual(res.status, .ok)
+            let settings = try XCTUnwrap(try self.object(res)["settings"] as? [String: Any])
+            let providers = try XCTUnwrap(settings["providers"] as? [[String: Any]])
+            XCTAssertFalse(providers.isEmpty)
+            XCTAssertTrue(providers.allSatisfy { $0["apiKey"] == nil })
+        }
+    }
+
     func testSettingsWithUnknownProviderIsNotFound() async throws {
         let app = try await makeApp()
         defer { Task { try? await app.asyncShutdown() } }

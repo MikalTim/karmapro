@@ -28,7 +28,6 @@ function provider(overrides: Partial<AIProvider>): AIProvider {
     popupTitle: "LM Studio  (custom)",
     tableName: "LM Studio",
     tableKey: "none",
-    apiKey: "",
     ...overrides,
   };
 }

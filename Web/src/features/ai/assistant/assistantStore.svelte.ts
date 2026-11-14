@@ -338,6 +338,12 @@ export function saveProvider(existing: AIProvider | null, form: ProviderForm): P
   });
 }
 
+/** The saved key of a user endpoint, read when its edit sheet opens (the settings reply carries no endpoint keys). */
+export async function loadProviderKey(id: string): Promise<string> {
+  const stored = await api<{ apiKey: string }>("GET", `/api/ai/providers/${encodeURIComponent(id)}/key`);
+  return stored.apiKey;
+}
+
 export function deleteProvider(id: string): Promise<AISettings> {
   return api<AISettings>("DELETE", `/api/ai/providers/${encodeURIComponent(id)}`).then((settings) => {
     adoptProviderSettings(settings);

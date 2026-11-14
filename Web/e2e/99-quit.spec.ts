@@ -1,21 +1,45 @@
 import { expect, test } from "@playwright/test";
+import { spawn } from "node:child_process";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { openFixture, pickMenuItem } from "./helpers";
 
-test("Quit asks for confirmation and then stops the server", async ({ page, request }) => {
-  await openFixture(page);
-  await pickMenuItem(page, "Karma Pro", "Quit Karma Pro");
-  const alert = page.getByRole("alertdialog");
-  await expect(alert).toBeVisible();
+// Quit runs against its own server with its own home, so the process's exit status can be read: a crash (which
+// would also stop the page from answering) must not pass for a clean quit.
+const port = 8795;
+test.use({ baseURL: `http://127.0.0.1:${port}` });
 
-  await alert.getByRole("button", { name: "Cancel" }).click();
-  await expect(alert).toBeHidden();
-  expect((await request.get("/api/app/info", { headers: { "X-Karma-Client": "web" } })).ok()).toBe(true);
+test("Quit asks for confirmation and then ends the server with status 0", async ({ page, request }) => {
+  const home = mkdtempSync(join(tmpdir(), "karma-e2e-quit-"));
+  const server = spawn(process.env.KARMA_BIN ?? "../.build/release/karma", ["--serve", "--port", String(port)], {
+    env: { ...process.env, HOME: home, XDG_DATA_HOME: join(home, ".local/share"), XDG_CONFIG_HOME: join(home, ".config") },
+    stdio: "ignore",
+  });
+  const exited = Promise.withResolvers<number | null>();
+  server.on("exit", (code) => exited.resolve(code));
 
-  await pickMenuItem(page, "Karma Pro", "Quit Karma Pro");
-  await alert.getByRole("button", { name: "Quit" }).click();
-  await expect
-    .poll(async () => (await request.get("/api/app/info", { headers: { "X-Karma-Client": "web" } }).catch(() => null))?.ok() ?? false, {
-      timeout: 15_000,
-    })
-    .toBe(false);
+  try {
+    const headers = { "X-Karma-Client": "web" };
+    await expect
+      .poll(async () => (await request.get("/api/app/info", { headers }).catch(() => null))?.ok() ?? false, {
+        timeout: 20_000,
+      })
+      .toBe(true);
+
+    await openFixture(page);
+    await pickMenuItem(page, "Karma Pro", "Quit Karma Pro");
+    const alert = page.getByRole("alertdialog");
+    await expect(alert).toBeVisible();
+
+    await alert.getByRole("button", { name: "Cancel" }).click();
+    await expect(alert).toBeHidden();
+    expect((await request.get("/api/app/info", { headers })).ok()).toBe(true);
+
+    await pickMenuItem(page, "Karma Pro", "Quit Karma Pro");
+    await alert.getByRole("button", { name: "Quit" }).click();
+    expect(await exited.promise).toBe(0);
+  } finally {
+    server.kill();
+  }
 });
